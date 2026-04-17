@@ -107,12 +107,11 @@ Stop conditions:
 
 ## Promotion
 
-Once this prompt is validated end-to-end on at least one real scraped target, promote it upstream:
+This prompt has been promoted upstream. The authoritative copies live at:
 
-1. Copy this file to `~/Code/ralph-loop-pack/.ralph/prompts/anthropic/docs-reverse.md` (drop the `docs/` prefix).
-2. Mirror as `~/Code/ralph-loop-pack/.ralph/prompts/glm-5/docs-reverse.md` (translate any model-specific phrasing).
-3. Add a `docs-reverse` mode branch to `~/Code/ralph-loop-pack/.ralph/loop.sh` mirroring the existing `reverse` branch (line ~87).
-4. Document the new mode in `README.md` and `AGENTS.md` of `ralph-loop-pack`.
-5. Open a PR.
+- `~/Code/ralph-loop-pack/.ralph/prompts/anthropic/docs-reverse.md` — used by CC / `loop.sh docs-reverse`
+- `~/Code/ralph-loop-pack/.ralph/prompts/deepseek/docs-reverse.md` — used by `specs agent --model deepseek/...`
 
-Until promoted, this draft is consumed in-place by feeding `cat docs/docs-reverse-prompt.md` into a Claude session pointed at the scrape tree.
+This file (`docs/docs-reverse-prompt.md`) is the original draft and remains here as a local reference. If you edit the prompt, update the upstream copies directly.
+
+The `model: opus` frontmatter above reflects the Anthropic track default. The DeepSeek track targets `deepseek/deepseek-r1-0528` (reasoning model); see `workflow.md §5` for model recommendations.

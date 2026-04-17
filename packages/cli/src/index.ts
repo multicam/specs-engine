@@ -12,6 +12,7 @@ import { runStatus } from "./commands/status.ts";
 import { runDiff } from "./commands/diff.ts";
 import { runRepin } from "./commands/repin.ts";
 import { runDebrand } from "./commands/debrand.ts";
+import { runAgent } from "./commands/agent.ts";
 
 const HELP = `specs — competitive docs scraper
 
@@ -22,6 +23,12 @@ Usage:
   specs diff [--stat]                Page-level diff since pinned SHA
   specs repin                        Bump submodule to scrape HEAD; commit in project
   specs debrand [--polish]           Apply glossary to specs/, optional LLM polish
+  specs agent <mode> [options]       Run LLM agent via OpenRouter with tool access
+
+Agent options:
+  --model <id>              OpenRouter model ID (required)
+  --max-iterations <n>      Max agent steps (default: 5)
+  --prompt <path>           Override prompt file (optional)
 
 Run inside a <target>-project/ directory (containing .specs-engine.yaml),
 except for 'init' which creates one.
@@ -58,6 +65,34 @@ async function main(argv: string[]): Promise<number> {
       return runRepin({ cwd: process.cwd() });
     case "debrand":
       return runDebrand({ cwd: process.cwd(), polish: rest.includes("--polish") });
+    case "agent": {
+      const mode = rest[0];
+      if (!mode || mode.startsWith("--")) {
+        process.stderr.write(
+          "agent: usage: specs agent <mode> --model <model-id> [--max-iterations <n>] [--prompt <path>]\n",
+        );
+        return 2;
+      }
+      const modelIdx = rest.indexOf("--model");
+      const model = modelIdx >= 0 ? rest[modelIdx + 1] : undefined;
+      if (!model) {
+        process.stderr.write("agent: --model is required\n");
+        return 2;
+      }
+      const maxIterIdx = rest.indexOf("--max-iterations");
+      const maxIterations =
+        maxIterIdx >= 0 ? parseInt(rest[maxIterIdx + 1] ?? "5", 10) : 5;
+      const promptIdx = rest.indexOf("--prompt");
+      const promptOverride =
+        promptIdx >= 0 ? rest[promptIdx + 1] : undefined;
+      return runAgent({
+        cwd: process.cwd(),
+        mode,
+        model,
+        maxIterations,
+        promptOverride,
+      });
+    }
     default:
       process.stderr.write(`unknown command: ${cmd}\n${HELP}`);
       return 2;

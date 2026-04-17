@@ -42,6 +42,13 @@ export const ConfigSchema = z.object({
       polish: z.boolean().default(false),
     })
     .default({ glossary: {}, polish: false }),
+
+  agent: z
+    .object({
+      ralph_pack: z.string().min(1, "agent.ralph_pack is required").optional(),
+      openrouter_api_key_env: z.string().default("OPENROUTER_API_KEY"),
+    })
+    .optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
