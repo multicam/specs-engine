@@ -13,6 +13,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.74",
     "@ai-sdk/openai": "^3.0.53",
     "@anthropic-ai/sdk": "^0.40.0",
     "ai": "^6.0.162",

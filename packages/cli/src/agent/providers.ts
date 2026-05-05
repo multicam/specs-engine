@@ -1,11 +1,12 @@
 /**
  * Provider registry for the agent runner.
  *
- * Each provider is an OpenAI-compatible chat completions endpoint accessed via
- * the Vercel AI SDK's `@ai-sdk/openai`. Adding a new provider is a registry edit
- * here — the rest of the agent code (client, prompt resolver, command runner)
- * is provider-agnostic and reads from this map.
+ * Most providers are OpenAI-compatible and go through `@ai-sdk/openai`.
+ * Providers with a native AI SDK adapter (e.g. Anthropic) set `createModel`
+ * to bypass the OpenAI-compatible path entirely.
  */
+import type { LanguageModel } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import type { ModelTier } from "./budgets.ts";
 
 export interface ProviderConfig {
@@ -27,6 +28,12 @@ export interface ProviderConfig {
    * Defaults to 'weak' when absent.
    */
   defaultTier?: ModelTier;
+  /**
+   * Optional native model factory. When set, `createAgentModel` uses this
+   * instead of the default OpenAI-compatible path. Use for providers that have
+   * a dedicated AI SDK adapter (e.g. `@ai-sdk/anthropic`).
+   */
+  createModel?: (modelName: string, env: NodeJS.ProcessEnv) => LanguageModel;
 }
 
 export const PROVIDERS: Record<string, ProviderConfig> = {
@@ -37,6 +44,16 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     apiKeyEnvName: "OPENROUTER_API_KEY",
     promptDirs: ["openrouter", "anthropic"],
     defaultTier: "strong",
+  },
+  anthropic: {
+    prefix: "anthropic",
+    baseURL: () => "https://api.anthropic.com/v1",
+    apiKey: (env) => env["ANTHROPIC_API_KEY"] ?? null,
+    apiKeyEnvName: "ANTHROPIC_API_KEY",
+    promptDirs: ["anthropic"],
+    defaultTier: "strong",
+    createModel: (modelName, env) =>
+      createAnthropic({ apiKey: env["ANTHROPIC_API_KEY"] ?? "" })(modelName),
   },
   ollama: {
     prefix: "ollama",

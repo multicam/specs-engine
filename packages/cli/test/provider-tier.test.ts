@@ -10,6 +10,10 @@ describe("ProviderConfig.defaultTier", () => {
     expect(PROVIDERS["openrouter"]!.defaultTier).toBe("strong");
   });
 
+  test("anthropic has defaultTier 'strong'", () => {
+    expect(PROVIDERS["anthropic"]!.defaultTier).toBe("strong");
+  });
+
   test("ollama has defaultTier 'weak'", () => {
     expect(PROVIDERS["ollama"]!.defaultTier).toBe("weak");
   });
@@ -19,6 +23,21 @@ describe("ResolvedProvider.tier", () => {
   test("resolving openrouter yields tier 'strong'", () => {
     const r = resolveProvider("openrouter/deepseek/deepseek-r1");
     expect(r.tier).toBe("strong");
+  });
+
+  test("resolving anthropic yields tier 'strong'", () => {
+    const r = resolveProvider("anthropic/claude-sonnet-4-6");
+    expect(r.tier).toBe("strong");
+  });
+
+  test("anthropic provider strips prefix correctly", () => {
+    const r = resolveProvider("anthropic/claude-opus-4-7");
+    expect(r.modelName).toBe("claude-opus-4-7");
+    expect(r.provider.prefix).toBe("anthropic");
+  });
+
+  test("anthropic has native createModel factory", () => {
+    expect(typeof PROVIDERS["anthropic"]!.createModel).toBe("function");
   });
 
   test("resolving ollama yields tier 'weak'", () => {

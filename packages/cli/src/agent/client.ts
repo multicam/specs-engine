@@ -18,9 +18,14 @@ export interface AgentClientOptions {
 
 /**
  * Create a Vercel AI SDK language model bound to the given provider + model.
+ * Providers with a native `createModel` factory (e.g. Anthropic) bypass the
+ * OpenAI-compatible path.
  */
 export function createAgentModel(opts: AgentClientOptions) {
   const env = opts.env ?? process.env;
+  if (opts.provider.createModel) {
+    return opts.provider.createModel(opts.modelName, env);
+  }
   const baseURL = opts.provider.baseURL(env);
   // OpenAI SDK requires a non-empty apiKey string. Providers without auth
   // (Ollama) get a placeholder; the value is ignored by the server.
