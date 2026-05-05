@@ -12,6 +12,7 @@ import { access, readdir } from "node:fs/promises";
 import { loadConfig } from "../config.ts";
 import { resolvePrompt } from "../agent/prompt.ts";
 import { createAgentModel } from "../agent/client.ts";
+import { resolveProvider } from "../agent/router.ts";
 import { createTools, ToolState } from "../agent/tools.ts";
 import { computeCoverage } from "../agent/coverage.ts";
 import { runAgentLoop } from "../agent/loop.ts";
@@ -161,12 +162,23 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
     return 1;
   }
 
-  // Resolve API key
-  const apiKeyEnv = config.agent?.openrouter_api_key_env ?? "OPENROUTER_API_KEY";
-  const apiKey = process.env[apiKeyEnv];
-  if (!apiKey) {
+  // Resolve provider via the router
+  const resolved = resolveProvider(opts.model);
+
+  // Resolve API key, honoring deprecated `agent.openrouter_api_key_env` config
+  // override when the openrouter provider is selected (back-compat).
+  const legacyOverride =
+    resolved.provider.prefix === "openrouter"
+      ? config.agent?.openrouter_api_key_env
+      : undefined;
+  const apiKey = legacyOverride
+    ? (process.env[legacyOverride] ?? null)
+    : resolved.provider.apiKey(process.env);
+  if (resolved.provider.apiKeyEnvName && !apiKey) {
+    const envName = legacyOverride ?? resolved.provider.apiKeyEnvName;
     process.stderr.write(
-      `agent: ${apiKeyEnv} environment variable is not set.\n`,
+      `agent: ${envName} environment variable is not set ` +
+        `(required for provider '${resolved.provider.prefix}').\n`,
     );
     return 1;
   }
@@ -181,6 +193,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
         : "",
       mode: opts.mode,
       modelId: opts.model,
+      promptDirs: resolved.provider.promptDirs,
       promptOverride: opts.promptOverride,
     });
   } catch (err) {
@@ -189,8 +202,18 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   }
   process.stderr.write(`agent: using prompt from ${resolvedPrompt.path}\n`);
 
-  // Create model + tools with shared state for read budget + write tracking
-  const model = createAgentModel({ apiKey, modelId: opts.model });
+  // Create model + tools with shared state for read budget + write tracking.
+  // When the legacy override is set, hand the resolved key off via env so the
+  // provider's apiKey fn can pick it up uniformly.
+  const clientEnv =
+    legacyOverride && apiKey
+      ? { ...process.env, [resolved.provider.apiKeyEnvName!]: apiKey }
+      : process.env;
+  const model = createAgentModel({
+    provider: resolved.provider,
+    modelName: resolved.modelName,
+    env: clientEnv,
+  });
   const state = new ToolState(4); // 4 reads per round
   const tools = createTools(cwd, state);
 

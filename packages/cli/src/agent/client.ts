@@ -1,27 +1,32 @@
 /**
- * Vercel AI SDK client factory for OpenRouter.
+ * Vercel AI SDK client factory for OpenAI-compatible providers.
  *
- * Creates an OpenAI-compatible provider pointed at OpenRouter's API endpoint.
- * The API key is read from the environment variable specified in config
- * (default: OPENROUTER_API_KEY).
+ * The provider configuration (baseURL, apiKey, etc.) comes from `providers.ts`
+ * via the router; this module is provider-agnostic.
  */
 import { createOpenAI } from "@ai-sdk/openai";
+import type { ProviderConfig } from "./providers.ts";
 
 export interface AgentClientOptions {
-  /** OpenRouter API key. */
-  apiKey: string;
-  /** OpenRouter model ID, e.g. "deepseek/deepseek-chat". */
-  modelId: string;
+  /** Resolved provider config (from `resolveProvider`). */
+  provider: ProviderConfig;
+  /** Model name to send to the provider (provider prefix already stripped). */
+  modelName: string;
+  /** Override env (for tests). Defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
- * Create a Vercel AI SDK language model pointed at OpenRouter.
+ * Create a Vercel AI SDK language model bound to the given provider + model.
  */
 export function createAgentModel(opts: AgentClientOptions) {
-  const openrouter = createOpenAI({
-    baseURL: "https://openrouter.ai/api/v1",
-    apiKey: opts.apiKey,
-  });
-  // .chat() forces Chat Completions API; default uses Responses API which OpenRouter doesn't support
-  return openrouter.chat(opts.modelId);
+  const env = opts.env ?? process.env;
+  const baseURL = opts.provider.baseURL(env);
+  // OpenAI SDK requires a non-empty apiKey string. Providers without auth
+  // (Ollama) get a placeholder; the value is ignored by the server.
+  const apiKey = opts.provider.apiKey(env) ?? "no-key";
+  const client = createOpenAI({ baseURL, apiKey });
+  // .chat() forces Chat Completions API; default uses Responses API which
+  // most OpenAI-compatible servers (OpenRouter, Ollama, etc.) don't support.
+  return client.chat(opts.modelName);
 }

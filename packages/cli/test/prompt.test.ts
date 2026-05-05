@@ -94,40 +94,45 @@ describe("resolvePrompt", () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  test("resolves model-specific prompt when available", async () => {
+  test("resolves model-specific prompt when available (first promptDir)", async () => {
     const result = await resolvePrompt({
       ralphPackPath: tmpDir,
       mode: "docs-reverse",
       modelId: "deepseek/deepseek-chat",
+      promptDirs: ["deepseek", "anthropic"],
     });
     expect(result.body).toContain("DeepSeek-specific prompt body");
     expect(result.path).toContain("deepseek/docs-reverse.md");
   });
 
-  test("falls back to anthropic/ when model-specific dir missing", async () => {
+  test("falls back to anthropic/ when first promptDir missing", async () => {
     const result = await resolvePrompt({
       ralphPackPath: tmpDir,
       mode: "docs-reverse",
       modelId: "google/gemini-2.5-flash",
+      promptDirs: ["google", "anthropic"],
     });
     expect(result.body).toContain("Anthropic fallback prompt body");
     expect(result.path).toContain("anthropic/docs-reverse.md");
   });
 
-  test("falls back to anthropic/ when model has no prefix", async () => {
+  test("falls back to anthropic/ even when not listed in promptDirs", async () => {
+    // Defensive fallback: anthropic/ is always tried last.
     const result = await resolvePrompt({
       ralphPackPath: tmpDir,
       mode: "docs-reverse",
       modelId: "some-model",
+      promptDirs: ["nonexistent-provider"],
     });
     expect(result.body).toContain("Anthropic fallback prompt body");
   });
 
-  test("resolves anthropic-only mode", async () => {
+  test("resolves anthropic-only mode via promptDirs walk", async () => {
     const result = await resolvePrompt({
       ralphPackPath: tmpDir,
       mode: "build",
       modelId: "deepseek/deepseek-chat",
+      promptDirs: ["deepseek", "anthropic"],
     });
     expect(result.body).toContain("Build body");
     expect(result.path).toContain("anthropic/build.md");
@@ -139,6 +144,7 @@ describe("resolvePrompt", () => {
         ralphPackPath: tmpDir,
         mode: "nonexistent",
         modelId: "deepseek/deepseek-chat",
+        promptDirs: ["deepseek", "anthropic"],
       }),
     ).rejects.toThrow(/prompt not found for mode 'nonexistent'/);
   });
@@ -148,6 +154,7 @@ describe("resolvePrompt", () => {
       ralphPackPath: tmpDir,
       mode: "docs-reverse",
       modelId: "deepseek/deepseek-chat",
+      promptDirs: ["deepseek", "anthropic"],
     });
     expect(result.body).not.toContain("---");
     expect(result.body).toStartWith("# DeepSeek Docs Reverse");
@@ -161,6 +168,7 @@ describe("resolvePrompt", () => {
       ralphPackPath: tmpDir,
       mode: "docs-reverse",
       modelId: "deepseek/deepseek-chat",
+      promptDirs: ["deepseek", "anthropic"],
       promptOverride: overridePath,
     });
     expect(result.body).toBe("Custom prompt body.\n");
