@@ -16,6 +16,7 @@ import { resolveProvider } from "../agent/router.ts";
 import { createTools, ToolState } from "../agent/tools.ts";
 import { computeCoverage } from "../agent/coverage.ts";
 import { runAgentLoop } from "../agent/loop.ts";
+import { modelSlug } from "../agent/slug.ts";
 import { Glob } from "bun";
 
 export interface AgentOptions {
@@ -65,9 +66,15 @@ export async function scanDir(dir: string, pattern = "**/*.md"): Promise<string[
 export async function buildInitialMessage(
   cwd: string,
   mount: string,
+  /**
+   * Spec directory the model writes to and is scored against. Per-run dirs
+   * (`specs/.runs/<provider>--<model>`) keep parallel runs from colliding;
+   * coverage is scored relative to this directory, NOT the canonical specs/.
+   */
+  specsDirRel: string,
 ): Promise<string> {
   const scrapeDir = join(cwd, mount);
-  const specsDir = join(cwd, "specs");
+  const specsDir = join(cwd, specsDirRel);
 
   const scrapedFiles = await scanDir(scrapeDir);
   const existingSpecs = await scanDir(specsDir);
@@ -102,7 +109,7 @@ export async function buildInitialMessage(
   // Existing specs list (compact)
   if (existingSpecs.length > 0) {
     lines.push(`\n### Already written`);
-    lines.push(existingSpecs.map((f) => `specs/${f}`).join(", "));
+    lines.push(existingSpecs.map((f) => `${specsDirRel}/${f}`).join(", "));
   }
 
   // Instructions with priority + completion rules
@@ -127,7 +134,7 @@ export async function buildInitialMessage(
     `2. Read at most 4 pages with read_file("${mount}/..."). Do NOT read more than 4.`,
   );
   lines.push(
-    `3. Write exactly ONE spec file with write_file("specs/<area>/<topic>.md").`,
+    `3. Write exactly ONE spec file with write_file("${specsDirRel}/<area>/<topic>.md").`,
   );
   lines.push(
     `4. You MUST call write_file before finishing. A round without a write is a failure.`,
@@ -215,10 +222,17 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
     env: clientEnv,
   });
   const state = new ToolState(4); // 4 reads per round
-  const tools = createTools(cwd, state);
+  // Each run lands under specs/.runs/<provider>--<model-slug>/ so concurrent
+  // models can produce side-by-side specs without collision.
+  const runSlug = modelSlug(resolved.provider.prefix, resolved.modelName);
+  const runDir = `specs/.runs/${runSlug}`;
+  const tools = createTools(cwd, state, runDir);
 
   const mount = submoduleMountName(config.scrape_repo);
 
+  process.stderr.write(
+    `agent: writing to ${runDir}/\n`,
+  );
   process.stderr.write(
     `agent: starting loop (model: ${opts.model}, max rounds: ${opts.maxIterations})\n`,
   );
@@ -226,7 +240,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   const result = await runAgentLoop({
     model,
     systemPrompt: resolvedPrompt.body,
-    buildMessage: () => buildInitialMessage(cwd, mount),
+    buildMessage: () => buildInitialMessage(cwd, mount, runDir),
     tools,
     state,
     maxRounds: opts.maxIterations,

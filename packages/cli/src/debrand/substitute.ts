@@ -36,7 +36,14 @@ export function substitute(text: string, entries: readonly GlossaryEntry[]): str
   return out;
 }
 
-/** Recursively list `.md` files under `root`. */
+/**
+ * Recursively list `.md` files under `root`, skipping dot-prefixed entries.
+ *
+ * Dot-prefix skip matches Bun Glob's `dot:false` default used elsewhere in
+ * the agent runner, so per-run output dirs (`specs/.runs/<slug>/`) are
+ * automatically excluded from debrand. Curated specs live alongside in
+ * `specs/`; only those get glossary substitution.
+ */
 async function listMarkdownFiles(root: string): Promise<string[]> {
   const out: string[] = [];
   async function walk(dir: string): Promise<void> {
@@ -47,6 +54,7 @@ async function listMarkdownFiles(root: string): Promise<string[]> {
       return;
     }
     for (const name of entries) {
+      if (name.startsWith(".")) continue;
       const p = join(dir, name);
       const st = await stat(p);
       if (st.isDirectory()) await walk(p);

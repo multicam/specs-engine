@@ -25,15 +25,36 @@ export function safePath(root: string, relPath: string): string {
 }
 
 /**
- * Check that a write path is under specs/.
+ * Check that a write path is under the configured `writeRoot` directory.
+ *
+ * `writeRoot` is a forward-slash relative path inside the project (e.g.
+ * `specs` or `specs/.runs/ollama--qwen-7b`). Both forward- and back-slash
+ * normalised forms are accepted as the "starts-with" prefix to keep Windows
+ * working without separate code paths.
  */
-export function assertSpecsPath(root: string, relPath: string): void {
+export function assertWriteRoot(
+  root: string,
+  relPath: string,
+  writeRoot: string,
+): void {
   const normalized = relative(root, resolve(root, relPath));
-  if (!normalized.startsWith("specs/") && !normalized.startsWith("specs\\")) {
+  const writeRootBack = writeRoot.replace(/\//g, "\\");
+  const okForward = normalized === writeRoot || normalized.startsWith(`${writeRoot}/`);
+  const okBack = normalized === writeRootBack || normalized.startsWith(`${writeRootBack}\\`);
+  if (!okForward && !okBack) {
     throw new Error(
-      `write_file: writes are restricted to specs/ directory. Rejected: '${relPath}'`,
+      `write_file: writes are restricted to ${writeRoot}/ directory. Rejected: '${relPath}'`,
     );
   }
+}
+
+/**
+ * Back-compat shim: defaults the write root to `specs`. Existing callers and
+ * tests retain their semantics; new callers pass a per-run dir via
+ * `assertWriteRoot` directly.
+ */
+export function assertSpecsPath(root: string, relPath: string): void {
+  assertWriteRoot(root, relPath, "specs");
 }
 
 /**
@@ -58,8 +79,16 @@ export class ToolState {
 /**
  * Create the tool definitions bound to a project root directory.
  * All paths in tool args are relative to projectRoot.
+ *
+ * `writeRoot` (default: `specs`) restricts where `write_file` can land. The
+ * agent runner passes a per-run directory like `specs/.runs/ollama--qwen-7b`
+ * so multiple models can produce comparable specs side by side.
  */
-export function createTools(projectRoot: string, state: ToolState) {
+export function createTools(
+  projectRoot: string,
+  state: ToolState,
+  writeRoot = "specs",
+) {
   const root = resolve(projectRoot);
 
   return {
@@ -89,16 +118,16 @@ export function createTools(projectRoot: string, state: ToolState) {
 
     write_file: tool({
       description:
-        "Write content to a file under the specs/ directory. " +
-        "Path must be relative to project root and start with 'specs/'. " +
-        "Creates parent directories as needed.",
+        `Write content to a file under the ${writeRoot}/ directory. ` +
+        `Path must be relative to project root and start with '${writeRoot}/'. ` +
+        `Creates parent directories as needed.`,
       inputSchema: z.object({
-        path: z.string().describe("Relative path under specs/ to write to"),
+        path: z.string().describe(`Relative path under ${writeRoot}/ to write to`),
         content: z.string().describe("File content to write"),
       }),
       execute: async ({ path, content }) => {
         try {
-          assertSpecsPath(root, path);
+          assertWriteRoot(root, path, writeRoot);
           const abs = safePath(root, path);
           await mkdir(dirname(abs), { recursive: true });
           await writeFile(abs, content);

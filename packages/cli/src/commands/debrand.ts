@@ -109,6 +109,8 @@ async function listSpecsMd(specsDir: string): Promise<string[]> {
       return;
     }
     for (const name of entries) {
+      // Skip dot-prefixed entries (matches substitute.ts; excludes specs/.runs/).
+      if (name.startsWith(".")) continue;
       const p = join(dir, name);
       const s = await lstat(p);
       if (s.isDirectory()) await walk(p);

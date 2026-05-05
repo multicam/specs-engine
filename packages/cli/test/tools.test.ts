@@ -2,7 +2,13 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { safePath, assertSpecsPath, createTools, ToolState } from "../src/agent/tools.ts";
+import {
+  safePath,
+  assertSpecsPath,
+  assertWriteRoot,
+  createTools,
+  ToolState,
+} from "../src/agent/tools.ts";
 
 describe("safePath", () => {
   test("resolves relative path within root", () => {
@@ -50,6 +56,26 @@ describe("assertSpecsPath", () => {
     expect(() =>
       assertSpecsPath("/project", ".specs-engine.yaml"),
     ).toThrow(/writes are restricted to specs\//);
+  });
+});
+
+describe("assertWriteRoot", () => {
+  test("allows paths under the configured write root", () => {
+    expect(() =>
+      assertWriteRoot("/project", "specs/.runs/ollama--qwen-7b/api/foo.md", "specs/.runs/ollama--qwen-7b"),
+    ).not.toThrow();
+  });
+
+  test("rejects writes outside the configured write root", () => {
+    expect(() =>
+      assertWriteRoot("/project", "specs/foo.md", "specs/.runs/ollama--qwen-7b"),
+    ).toThrow(/writes are restricted to specs\/\.runs\/ollama--qwen-7b/);
+  });
+
+  test("rejects writes that exit the project root via traversal", () => {
+    expect(() =>
+      assertWriteRoot("/project", "../etc/passwd", "specs/.runs/foo"),
+    ).toThrow();
   });
 });
 
@@ -175,6 +201,29 @@ describe("createTools", () => {
       );
       expect(state.wroteSpec).toBe(true);
       expect(state.specsWritten).toEqual(["specs/tracked.md"]);
+    });
+
+    test("custom writeRoot accepts writes inside that root", async () => {
+      const tools = createTools(tmpDir, new ToolState(), "specs/.runs/ollama--qwen-7b");
+      const result = await tools.write_file.execute!(
+        { path: "specs/.runs/ollama--qwen-7b/api/endpoint.md", content: "# Endpoint" },
+        { toolCallId: "t-runs-1", messages: [], abortSignal: undefined as never },
+      );
+      expect(result).toContain("Written: specs/.runs/ollama--qwen-7b/api/endpoint.md");
+      const content = await readFile(
+        join(tmpDir, "specs/.runs/ollama--qwen-7b/api/endpoint.md"),
+        "utf8",
+      );
+      expect(content).toBe("# Endpoint");
+    });
+
+    test("custom writeRoot rejects writes to plain specs/", async () => {
+      const tools = createTools(tmpDir, new ToolState(), "specs/.runs/ollama--qwen-7b");
+      const result = await tools.write_file.execute!(
+        { path: "specs/leaked.md", content: "leaked" },
+        { toolCallId: "t-runs-2", messages: [], abortSignal: undefined as never },
+      );
+      expect(result).toContain("writes are restricted to specs/.runs/ollama--qwen-7b");
     });
   });
 

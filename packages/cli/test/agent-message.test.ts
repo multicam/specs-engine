@@ -47,53 +47,53 @@ describe("scanDir", () => {
 
 describe("buildInitialMessage", () => {
   test("includes uncovered scrape pages as paths", async () => {
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain("test-scrape/example.com/index.md");
     expect(msg).toContain("test-scrape/docs.example.com/intro.md");
     expect(msg).toMatch(/Uncovered pages \(\d+\)/);
   });
 
   test("lists existing specs in Already written section", async () => {
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain("specs/workspace/workspaces.md");
     expect(msg).toContain("Already written");
   });
 
   test("shows 0 specs written when specs dir missing", async () => {
     await rm(join(tmp, "specs"), { recursive: true, force: true });
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain("0 specs written");
   });
 
   test("shows area bias stats when specs exist", async () => {
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain("Specs per area");
     expect(msg).toContain("workspace: 1");
   });
 
   test("suggests ALL_TOPICS_COVERED when uncovered ≤ threshold", async () => {
     // Our test fixture has 3 scraped pages, default threshold is 5 → suggestComplete fires
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain("near complete");
   });
 
   test("enforces read budget in instructions", async () => {
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain("at most 4 pages");
   });
 
   test("includes ALL_TOPICS_COVERED signal instruction", async () => {
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain("ALL_TOPICS_COVERED");
   });
 
   test("includes write_file instruction", async () => {
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain("MUST call write_file");
   });
 
   test("uses submodule mount path in read_file hint", async () => {
-    const msg = await buildInitialMessage(tmp, mount);
+    const msg = await buildInitialMessage(tmp, mount, "specs");
     expect(msg).toContain(`read_file("${mount}/`);
   });
 });
