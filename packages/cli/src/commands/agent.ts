@@ -274,7 +274,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
     tools,
     state,
     maxRounds: opts.maxIterations,
-    stepsPerRound: 8,
+    stepsPerRound: 6,
     onStepFinish: ({ round, stepNumber, toolCalls }) => {
       process.stderr.write(
         `  [round ${round}] step ${stepNumber + 1}: ${toolCalls} tool call(s)\n`,

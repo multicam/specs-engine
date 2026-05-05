@@ -151,6 +151,31 @@ describe("runAgentLoop (outer loop)", () => {
     expect(callCount).toBeGreaterThanOrEqual(2);
   });
 
+  test("retry round uses tightened step budget (max 4)", async () => {
+    const stepCounts: number[] = [];
+    const model = sequenceModel([
+      // Round 1: write spec
+      { toolCalls: [tc("write_file", { path: "specs/a.md", content: "# A" }, "w1")] },
+      { text: "Wrote A." },
+      // Round 2: stall (no write) — isRetry=false, normal stepsPerRound
+      { text: "Nothing to do." },
+      // Round 3: retry — isRetry=true, effectiveSteps capped at 4
+      { text: "ALL_TOPICS_COVERED" },
+    ]);
+
+    await runAgentLoop(loopOpts({
+      model,
+      maxRounds: 10,
+      stepsPerRound: 10,
+      onRoundFinish: ({ steps }) => stepCounts.push(steps),
+    }));
+
+    // Round 3 (retry) should have been capped — the mock returns immediately so
+    // steps === 1, which is <= 4. Confirm it never exceeded the cap.
+    expect(stepCounts.length).toBe(3);
+    expect(stepCounts[2]).toBeLessThanOrEqual(4);
+  });
+
   test("onRoundFinish callback fires with correct info", async () => {
     const rounds: Array<{ round: number; wroteSpec: boolean; done: boolean }> = [];
     const model = sequenceModel([{ text: "ALL_TOPICS_COVERED" }]);

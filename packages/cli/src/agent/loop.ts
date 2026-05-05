@@ -51,20 +51,37 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
   let consecutiveStalls = 0;
 
   for (let round = 0; round < maxRounds; round++) {
+    const isRetry = consecutiveStalls > 0;
+    // Continuation rounds: explore budget tightens to 1 (model has the page list
+    // from the initial message, so one list/grep call is enough).
+    // Retry: also cut read budget to 1 to force quick write.
+    if (round > 0) {
+      state.exploreBudget = 1;
+      if (isRetry) state.readBudget = 1;
+    }
     state.reset();
     const specsBeforeRound = state.specsWritten.length;
     const message = await buildMessage();
 
-    const prompt = round === 0
-      ? message
-      : buildContinuation(message, state.specsWritten, consecutiveStalls > 0);
+    // Round 0: fresh message. Retry: append failure/retry language.
+    // Non-retry continuation: fresh message + a short urgency reminder.
+    // buildInitialMessage already has the write mandate but weak models need
+    // a reinforcing nudge at the end to actually commit.
+    const prompt = isRetry
+      ? buildContinuation(message, state.specsWritten)
+      : round === 0
+        ? message
+        : message + `\n\n**ACTION REQUIRED: Pick one uncovered page and call write_file NOW. Do not end this round without writing.**`;
+
+    // Retry: tight step budget + 1-read budget set above forces quick write.
+    const effectiveSteps = isRetry ? Math.min(stepsPerRound, 4) : stepsPerRound;
 
     const result = await generateText({
       model,
       system: systemPrompt,
       prompt,
       tools,
-      stopWhen: stepCountIs(stepsPerRound),
+      stopWhen: stepCountIs(effectiveSteps),
       onStepFinish: (event) => {
         onStepFinish?.({
           round: round + 1,
@@ -102,32 +119,14 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
   };
 }
 
-function buildContinuation(
-  baseMessage: string,
-  specsWritten: string[],
-  isRetry: boolean,
-): string {
-  const specsList = specsWritten.join(", ");
-  const uncoveredHint =
-    `Review the scraped pages list above. Compare against the specs already written. ` +
-    `Identify a topic area with scraped pages but NO corresponding spec.`;
-
-  if (isRetry) {
-    return (
-      baseMessage +
-      `\n\nPREVIOUS ROUND FAILED TO WRITE. This is your retry.\n` +
-      `Already written: ${specsList}\n` +
-      `${uncoveredHint}\n` +
-      `Pick a SIMPLE topic with only 1-2 source pages. Read them. ` +
-      `You MUST call write_file this round. If truly nothing is left, respond: ${DONE_SIGNAL}`
-    );
-  }
-
+function buildContinuation(baseMessage: string, specsWritten: string[]): string {
+  const specsList = specsWritten.length > 0 ? specsWritten.join(", ") : "(none this session)";
   return (
     baseMessage +
-    `\n\nAlready written: ${specsList}\n` +
-    `${uncoveredHint}\n` +
-    `Pick the next unspecified topic. You MUST call write_file. ` +
-    `If all major topics are covered, respond with exactly: ${DONE_SIGNAL}`
+    `\n\nPREVIOUS ROUND FAILED TO WRITE. This is your retry.\n` +
+    `Written this session: ${specsList}\n` +
+    `Review the uncovered pages above. Pick a SIMPLE topic. ` +
+    `You may read at MOST 1 file with read_file, then you MUST call write_file immediately. ` +
+    `If truly nothing is left, respond: ${DONE_SIGNAL}`
   );
 }

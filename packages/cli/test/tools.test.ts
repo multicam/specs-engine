@@ -228,41 +228,62 @@ describe("createTools", () => {
   });
 
   describe("list_files", () => {
+    const execOpts = { toolCallId: "t", messages: [], abortSignal: undefined as never };
+
     test("returns matching files for glob", async () => {
       const tools = createTools(tmpDir, new ToolState());
-      const result = await tools.list_files.execute!(
-        { glob: "specs/**/*.md" },
-        { toolCallId: "t9", messages: [], abortSignal: undefined as never },
-      );
+      const result = await tools.list_files.execute!({ glob: "specs/**/*.md" }, execOpts);
       expect(result).toContain("specs/existing.md");
     });
 
     test("returns no-match message for empty results", async () => {
       const tools = createTools(tmpDir, new ToolState());
-      const result = await tools.list_files.execute!(
-        { glob: "nonexistent/**/*.xyz" },
-        { toolCallId: "t10", messages: [], abortSignal: undefined as never },
-      );
+      const result = await tools.list_files.execute!({ glob: "nonexistent/**/*.xyz" }, execOpts);
       expect(result).toBe("No files matched.");
+    });
+
+    test("enforces explore budget", async () => {
+      const state = new ToolState(4, 1); // exploreBudget=1
+      const tools = createTools(tmpDir, state);
+      await tools.list_files.execute!({ glob: "specs/**/*.md" }, execOpts);
+      expect(state.exploreCount).toBe(1);
+      const blocked = await tools.list_files.execute!({ glob: "specs/**/*.md" }, execOpts);
+      expect(blocked).toContain("EXPLORATION BUDGET EXHAUSTED");
+      expect(state.exploreCount).toBe(1); // does not increment past budget
+    });
+
+    test("explore budget shared between list_files and grep", async () => {
+      const state = new ToolState(4, 1); // exploreBudget=1
+      const tools = createTools(tmpDir, state);
+      await tools.list_files.execute!({ glob: "specs/**/*.md" }, execOpts);
+      const blocked = await tools.grep.execute!({ pattern: "API" }, execOpts);
+      expect(blocked).toContain("EXPLORATION BUDGET EXHAUSTED");
+    });
+
+    test("explore budget resets between rounds", async () => {
+      const state = new ToolState(4, 1);
+      const tools = createTools(tmpDir, state);
+      await tools.list_files.execute!({ glob: "specs/**/*.md" }, execOpts);
+      const blocked = await tools.list_files.execute!({ glob: "specs/**/*.md" }, execOpts);
+      expect(blocked).toContain("EXPLORATION BUDGET EXHAUSTED");
+      state.reset();
+      const result = await tools.list_files.execute!({ glob: "specs/**/*.md" }, execOpts);
+      expect(result).toContain("specs/existing.md");
     });
   });
 
   describe("grep", () => {
+    const execOpts = { toolCallId: "t", messages: [], abortSignal: undefined as never };
+
     test("finds matching lines in files", async () => {
       const tools = createTools(tmpDir, new ToolState());
-      const result = await tools.grep.execute!(
-        { pattern: "API Docs" },
-        { toolCallId: "t11", messages: [], abortSignal: undefined as never },
-      );
+      const result = await tools.grep.execute!({ pattern: "API Docs" }, execOpts);
       expect(result).toContain("API Docs");
     });
 
     test("searches within specific subdirectory", async () => {
       const tools = createTools(tmpDir, new ToolState());
-      const result = await tools.grep.execute!(
-        { pattern: "Existing", path: "specs" },
-        { toolCallId: "t12", messages: [], abortSignal: undefined as never },
-      );
+      const result = await tools.grep.execute!({ pattern: "Existing", path: "specs" }, execOpts);
       expect(result).toContain("Existing Spec");
     });
 
@@ -270,9 +291,18 @@ describe("createTools", () => {
       const tools = createTools(tmpDir, new ToolState());
       const result = await tools.grep.execute!(
         { pattern: "zzz_nonexistent_pattern_zzz" },
-        { toolCallId: "t13", messages: [], abortSignal: undefined as never },
+        execOpts,
       );
       expect(result).toBe("No matches found.");
+    });
+
+    test("enforces explore budget", async () => {
+      const state = new ToolState(4, 1); // exploreBudget=1
+      const tools = createTools(tmpDir, state);
+      await tools.grep.execute!({ pattern: "API" }, execOpts);
+      const blocked = await tools.grep.execute!({ pattern: "API" }, execOpts);
+      expect(blocked).toContain("EXPLORATION BUDGET EXHAUSTED");
+      expect(state.exploreCount).toBe(1);
     });
   });
 });

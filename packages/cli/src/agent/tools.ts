@@ -62,16 +62,24 @@ export function assertSpecsPath(root: string, relPath: string): void {
  */
 export class ToolState {
   readCount = 0;
+  exploreCount = 0;   // list_files + grep calls
   wroteSpec = false;
   specsWritten: string[] = [];
   readBudget: number;
+  exploreBudget: number;
 
-  constructor(readBudget = 4) {
+  constructor(readBudget = 4, exploreBudget = 3) {
     this.readBudget = readBudget;
+    this.exploreBudget = exploreBudget;
+  }
+
+  get explorationExhausted(): boolean {
+    return this.readCount >= this.readBudget && this.exploreCount >= this.exploreBudget;
   }
 
   reset() {
     this.readCount = 0;
+    this.exploreCount = 0;
     this.wroteSpec = false;
   }
 }
@@ -135,7 +143,12 @@ export function createTools(
           state.specsWritten.push(path);
           return `Written: ${path} (${content.length} bytes)`;
         } catch (err) {
-          return `Error writing ${path}: ${(err as Error).message}`;
+          const msg = (err as Error).message;
+          // Provide a path correction hint when the model uses the wrong prefix.
+          const hint = msg.includes("restricted to")
+            ? ` Correct prefix: ${writeRoot}/<area>/<topic>.md`
+            : "";
+          return `Error writing ${path}: ${msg}${hint}`;
         }
       },
     }),
@@ -143,11 +156,19 @@ export function createTools(
     list_files: tool({
       description:
         "List files matching a glob pattern relative to project root. " +
-        "Example: 'specs/**/*.md' or '*-scrape/**/*.md'.",
+        "Example: 'specs/**/*.md' or '*-scrape/**/*.md'. " +
+        "You have a LIMITED exploration budget — use it wisely.",
       inputSchema: z.object({
         glob: z.string().describe("Glob pattern to match files"),
       }),
       execute: async ({ glob: pattern }) => {
+        if (state.exploreCount >= state.exploreBudget) {
+          return (
+            `EXPLORATION BUDGET EXHAUSTED (${state.exploreBudget}/${state.exploreBudget} list/grep calls used). ` +
+            `You MUST call write_file now to write your spec.`
+          );
+        }
+        state.exploreCount++;
         try {
           const g = new BunGlob(pattern);
           const matches: string[] = [];
@@ -177,6 +198,13 @@ export function createTools(
           .describe("Optional subdirectory to search in (relative to project root)"),
       }),
       execute: async ({ pattern, path }) => {
+        if (state.exploreCount >= state.exploreBudget) {
+          return (
+            `EXPLORATION BUDGET EXHAUSTED (${state.exploreBudget}/${state.exploreBudget} list/grep calls used). ` +
+            `You MUST call write_file now to write your spec.`
+          );
+        }
+        state.exploreCount++;
         try {
           const searchDir = path ? safePath(root, path) : root;
           const result = spawnSync(
