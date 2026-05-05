@@ -30,4 +30,26 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     apiKeyEnvName: "OPENROUTER_API_KEY",
     promptDirs: ["openrouter", "anthropic"],
   },
+  ollama: {
+    prefix: "ollama",
+    baseURL: (env) => {
+      const host = env["OLLAMA_HOST"] ?? "http://localhost:11434";
+      if (host.endsWith("/v1")) return host;
+      return `${host.replace(/\/$/, "")}/v1`;
+    },
+    apiKey: () => null,
+    apiKeyEnvName: null,
+    promptDirs: ["ollama", "anthropic"],
+    // Curated list of Ollama models known to drive OpenAI-style tool calls
+    // reliably. The probe in Phase 4 is the source of truth; this list seeds
+    // the diagnostic when the probe fails on an unknown model.
+    knownGoodModels: [
+      "qwen2.5-coder:7b",
+      "qwen2.5-coder:32b",
+      "llama3.1:8b",
+      "mistral-nemo:12b",
+      "qwen2.5:7b",
+      "qwen2.5:32b",
+    ],
+  },
 };

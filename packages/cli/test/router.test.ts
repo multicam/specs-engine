@@ -28,4 +28,16 @@ describe("resolveProvider", () => {
     expect(r.provider).toBe(PROVIDERS["openrouter"]!);
     expect(r.modelName).toBe("unknown/foo");
   });
+
+  test("ollama prefix routes to ollama provider, modelName preserves colon-tag", () => {
+    const r = resolveProvider("ollama/qwen2.5-coder:7b");
+    expect(r.provider).toBe(PROVIDERS["ollama"]!);
+    expect(r.modelName).toBe("qwen2.5-coder:7b");
+  });
+
+  test("ollama llama3.1:8b modelName preserves colon", () => {
+    const r = resolveProvider("ollama/llama3.1:8b");
+    expect(r.provider).toBe(PROVIDERS["ollama"]!);
+    expect(r.modelName).toBe("llama3.1:8b");
+  });
 });
