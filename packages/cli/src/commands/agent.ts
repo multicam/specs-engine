@@ -16,6 +16,7 @@ import { resolveProvider } from "../agent/router.ts";
 import { createTools, ToolState } from "../agent/tools.ts";
 import { computeCoverage } from "../agent/coverage.ts";
 import { runAgentLoop } from "../agent/loop.ts";
+import { probeToolCalling } from "../agent/probe.ts";
 import { modelSlug } from "../agent/slug.ts";
 import { Glob } from "bun";
 
@@ -233,6 +234,35 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   process.stderr.write(
     `agent: writing to ${runDir}/\n`,
   );
+
+  // Warn when the user picks an Ollama model that's not on the curated list;
+  // the probe is still the source of truth, this is just a heads-up.
+  if (
+    resolved.provider.knownGoodModels &&
+    !resolved.provider.knownGoodModels.includes(resolved.modelName)
+  ) {
+    process.stderr.write(
+      `agent: '${resolved.modelName}' is outside the known-good model list for ` +
+        `${resolved.provider.prefix}; expect possible tool-call flakiness.\n`,
+    );
+  }
+
+  // Pre-flight tool-call probe — also warms the model on Ollama.
+  process.stderr.write(`agent: pre-flight tool-call probe...\n`);
+  const probe = await probeToolCalling({
+    model,
+    tools,
+    modelId: opts.model,
+    ...(resolved.provider.knownGoodModels
+      ? { knownGoodModels: resolved.provider.knownGoodModels }
+      : {}),
+  });
+  if (!probe.ok) {
+    process.stderr.write(`${probe.diagnostic}\n`);
+    return 2; // distinct exit code from "config error" (1)
+  }
+  process.stderr.write(`agent: probe ok (${probe.toolCallCount} tool call(s))\n`);
+
   process.stderr.write(
     `agent: starting loop (model: ${opts.model}, max rounds: ${opts.maxIterations})\n`,
   );
