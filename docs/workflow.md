@@ -131,23 +131,77 @@ Uses `ralph-loop-pack/.ralph/prompts/anthropic/docs-reverse.md`. Runs in CC with
 
 ```bash
 cd ~/Code/acme-project
+specs agent docs-reverse --model openrouter/deepseek/deepseek-r1-0528 --max-iterations 5
+# legacy bare-prefix form still works:
 specs agent docs-reverse --model deepseek/deepseek-r1-0528 --max-iterations 5
 ```
 
-Uses `ralph-loop-pack/.ralph/prompts/deepseek/docs-reverse.md` (auto-resolved by model prefix). Requires `OPENROUTER_API_KEY` in env.
+Uses `ralph-loop-pack/.ralph/prompts/openrouter/docs-reverse.md` if present, otherwise falls back to `prompts/anthropic/docs-reverse.md`. Requires `OPENROUTER_API_KEY` in env.
+
+### Path C — Ollama (local)
+
+```bash
+cd ~/Code/acme-project
+ollama pull qwen2.5-coder:7b
+specs agent docs-reverse --model ollama/qwen2.5-coder:7b --max-iterations 5
+# remote ollama:
+OLLAMA_HOST=http://gpu.lan:11434 specs agent docs-reverse --model ollama/qwen2.5:32b
+```
+
+No API key needed. The agent runs against `OLLAMA_HOST` (defaults to `http://localhost:11434`) via the OpenAI-compatible `/v1/chat/completions` endpoint. The `/v1` suffix is auto-appended if you omit it.
+
+A pre-flight tool-call probe runs before the main loop. Models that don't drive OpenAI-style tool calls (e.g. `gemma3:1b`) fail fast with exit code 2 and a diagnostic listing curated tool-call-reliable models.
+
+Curated `knownGoodModels` for Ollama: `qwen2.5-coder:7b`, `qwen2.5-coder:32b`, `llama3.1:8b`, `mistral-nemo:12b`, `qwen2.5:7b`, `qwen2.5:32b`. Outside this list the agent prints a flakiness warning but still runs the probe.
 
 ### Model recommendations
 
 | Task | Model | Path |
 |------|-------|------|
-| docs-reverse (reasoning-heavy) | `deepseek/deepseek-r1-0528` | Path B |
-| review | `deepseek/deepseek-r1-0528` | Path B |
-| build (code gen) | `deepseek/deepseek-v3-2` | Path B |
+| docs-reverse (reasoning-heavy) | `openrouter/deepseek/deepseek-r1-0528` | Path B |
+| docs-reverse (local, free) | `ollama/qwen2.5-coder:7b` or `ollama/qwen2.5:32b` | Path C |
+| review | `openrouter/deepseek/deepseek-r1-0528` | Path B |
+| build (code gen) | `openrouter/deepseek/deepseek-v3-2` | Path B |
 | docs-reverse (Anthropic) | Claude (via CC default) | Path A |
 
 Note: `deepseek/deepseek-chat` and `deepseek/deepseek-reasoner` are obsolete OpenRouter model IDs. Use `deepseek-r1-0528` (reasoning) and `deepseek-v3-2` (code gen) instead.
 
-The prompt's job: read `<target>-scrape/` as declared product behavior and write claim-based specs into `<target>-project/specs/`.
+The prompt's job: read `<target>-scrape/` as declared product behavior and write claim-based specs into `<target>-project/specs/.runs/<provider>--<model-slug>/`.
+
+### Side-by-side runs and curation
+
+Each `specs agent` invocation writes to its own subdirectory under `specs/.runs/`:
+
+```
+specs/
+├── api/                                       # canonical: curated by you
+├── workspace/
+└── .runs/
+    ├── openrouter--deepseek-deepseek-r1-0528/ # one run, one model
+    │   └── api/...
+    ├── openrouter--google-gemini-2.5-flash/   # parallel run, same target
+    │   └── api/...
+    └── ollama--qwen2.5-coder-7b/              # local run
+        └── api/...
+```
+
+This way multiple models can produce comparable specs without colliding. Pick the best output and copy it up:
+
+```bash
+cp -r specs/.runs/ollama--qwen2.5-coder-7b/* specs/
+```
+
+Compare two runs:
+
+```bash
+git diff specs/.runs/openrouter--deepseek-deepseek-r1-0528 specs/.runs/ollama--qwen2.5-coder-7b
+```
+
+`specs/.runs/` is dot-prefixed, so:
+- `specs debrand` skips it (only the canonical curated `specs/` tree is debranded).
+- The agent's own `list_files`/`buildInitialMessage` glob walks (Bun `Glob` with `dot: false`) skip it.
+
+If you want to commit run outputs into the project repo for archival, just `git add specs/.runs/`. There's no auto-cleanup; runs are cheap (~50KB per topic).
 
 ## 6. De-brand
 

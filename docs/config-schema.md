@@ -51,7 +51,7 @@ debrand:
 
 agent:                            # optional; required only for `specs agent`
   ralph_pack: ~/Code/ralph-loop-pack  # path to ralph-loop-pack for prompt discovery
-  openrouter_api_key_env: OPENROUTER_API_KEY  # env var name; default
+  openrouter_api_key_env: OPENROUTER_API_KEY  # DEPRECATED — see note below; still honored
 ```
 
 ## Field reference
@@ -100,9 +100,28 @@ Optional. Required only when using `specs agent`.
 | Key | Default | Notes |
 |-----|---------|-------|
 | `ralph_pack` | `~/Code/ralph-loop-pack` | Path to your ralph-loop-pack clone. Used for prompt auto-discovery: `<ralph_pack>/.ralph/prompts/<provider>/<mode>.md`. |
-| `openrouter_api_key_env` | `OPENROUTER_API_KEY` | Env var name holding the OpenRouter API key. Key is required at runtime; this field only names the var. |
+| `openrouter_api_key_env` | `OPENROUTER_API_KEY` | **Deprecated.** Still honored for back-compat when the OpenRouter provider is selected. New setups should rely on the default `OPENROUTER_API_KEY` env var directly. |
 
-Model ID format for `--model` is the OpenRouter `provider/model-name` string (e.g. `deepseek/deepseek-r1-0528`, `google/gemini-2.5-flash`). The provider prefix is also used to resolve the prompt directory under `ralph_pack`.
+#### Provider routing
+
+The `--model` argument now takes a provider-prefixed model id. The legacy bare-prefix form (`<vendor>/<model>`) still works and routes to OpenRouter for back-compat.
+
+| Model arg | Provider | API key env | Prompt dir order |
+|-----------|----------|-------------|------------------|
+| `openrouter/<vendor>/<model>` | OpenRouter | `OPENROUTER_API_KEY` | `openrouter/`, then `anthropic/` |
+| `<vendor>/<model>` (legacy) | OpenRouter | `OPENROUTER_API_KEY` | `openrouter/`, then `anthropic/` |
+| `ollama/<model>:<tag>` | Ollama (local or `OLLAMA_HOST`) | — none — | `ollama/`, then `anthropic/` |
+
+Each model id is also slugified into a per-run subdirectory under `specs/.runs/<provider>--<model-slug>/`. See `workflow.md § Side-by-side runs and curation`.
+
+#### Environment variables
+
+| Var | Used by | Notes |
+|-----|---------|-------|
+| `OPENROUTER_API_KEY` | OpenRouter provider | Required when `--model` resolves to OpenRouter. |
+| `OLLAMA_HOST` | Ollama provider | Optional. Defaults to `http://localhost:11434`. The `/v1` suffix is appended automatically if missing. |
+| `ANTHROPIC_API_KEY` | `specs debrand --polish` | Required only for the optional polish pass. |
+| `JINA_API_KEY` | Scraper | Optional. Boosts rate limits when set. |
 
 ## Canonical URL rules (applied before frontier dedup)
 

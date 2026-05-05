@@ -23,12 +23,20 @@ Usage:
   specs diff [--stat]                Page-level diff since pinned SHA
   specs repin                        Bump submodule to scrape HEAD; commit in project
   specs debrand [--polish]           Apply glossary to specs/, optional LLM polish
-  specs agent <mode> [options]       Run LLM agent via OpenRouter with tool access
+  specs agent <mode> [options]       Run LLM agent (OpenRouter or Ollama) with tool access
 
 Agent options:
-  --model <id>              OpenRouter model ID (required)
+  --model <id>              Provider-prefixed model ID (required)
+                              openrouter/<vendor>/<model>     — needs OPENROUTER_API_KEY
+                              ollama/<model>:<tag>            — local; OLLAMA_HOST optional
+                              <vendor>/<model>                — legacy; routes to openrouter
   --max-iterations <n>      Max agent steps (default: 5)
   --prompt <path>           Override prompt file (optional)
+
+Examples:
+  specs agent docs-reverse --model openrouter/deepseek/deepseek-r1-0528
+  specs agent docs-reverse --model ollama/qwen2.5-coder:7b
+  OLLAMA_HOST=http://gpu.lan:11434 specs agent docs-reverse --model ollama/qwen2.5:32b
 
 Run inside a <target>-project/ directory (containing .specs-engine.yaml),
 except for 'init' which creates one.
