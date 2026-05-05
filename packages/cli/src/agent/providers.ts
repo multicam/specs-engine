@@ -6,6 +6,7 @@
  * here — the rest of the agent code (client, prompt resolver, command runner)
  * is provider-agnostic and reads from this map.
  */
+import type { ModelTier } from "./budgets.ts";
 
 export interface ProviderConfig {
   /** Stable string used as model-id prefix and run-dir slug component. */
@@ -20,6 +21,12 @@ export interface ProviderConfig {
   promptDirs: readonly string[];
   /** Optional curated list of models known to drive tool calls reliably. */
   knownGoodModels?: readonly string[];
+  /**
+   * Default budget tier for models served by this provider.
+   * 'strong' = frontier API (higher budgets); 'weak' = local/Ollama (tight budgets).
+   * Defaults to 'weak' when absent.
+   */
+  defaultTier?: ModelTier;
 }
 
 export const PROVIDERS: Record<string, ProviderConfig> = {
@@ -29,6 +36,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     apiKey: (env) => env["OPENROUTER_API_KEY"] ?? null,
     apiKeyEnvName: "OPENROUTER_API_KEY",
     promptDirs: ["openrouter", "anthropic"],
+    defaultTier: "strong",
   },
   ollama: {
     prefix: "ollama",
@@ -51,5 +59,6 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
       "qwen2.5:7b",
       "qwen2.5:32b",
     ],
+    defaultTier: "weak",
   },
 };

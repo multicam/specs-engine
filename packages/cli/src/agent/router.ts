@@ -5,6 +5,7 @@
  * the literal string through).
  */
 import { PROVIDERS, type ProviderConfig } from "./providers.ts";
+import type { ModelTier } from "./budgets.ts";
 
 export interface ResolvedProvider {
   provider: ProviderConfig;
@@ -12,6 +13,8 @@ export interface ResolvedProvider {
   modelName: string;
   /** The original model id as passed on the CLI (used for prompt + slug context). */
   modelId: string;
+  /** Budget tier derived from the provider's defaultTier (defaults to 'weak'). */
+  tier: ModelTier;
 }
 
 export function resolveProvider(modelId: string): ResolvedProvider {
@@ -21,7 +24,7 @@ export function resolveProvider(modelId: string): ResolvedProvider {
     const tail = modelId.slice(slashIdx + 1);
     const provider = PROVIDERS[head];
     if (provider) {
-      return { provider, modelName: tail, modelId };
+      return { provider, modelName: tail, modelId, tier: provider.defaultTier ?? "weak" };
     }
   }
   // Legacy / no-prefix / unknown-prefix: route to openrouter with the literal string.
@@ -30,5 +33,5 @@ export function resolveProvider(modelId: string): ResolvedProvider {
   if (!fallback) {
     throw new Error("router: openrouter provider missing from registry");
   }
-  return { provider: fallback, modelName: modelId, modelId };
+  return { provider: fallback, modelName: modelId, modelId, tier: fallback.defaultTier ?? "weak" };
 }

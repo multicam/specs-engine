@@ -13,6 +13,7 @@ import { loadConfig } from "../config.ts";
 import { resolvePrompt } from "../agent/prompt.ts";
 import { createAgentModel } from "../agent/client.ts";
 import { resolveProvider } from "../agent/router.ts";
+import { getBudgets } from "../agent/budgets.ts";
 import { createTools, ToolState } from "../agent/tools.ts";
 import { computeCoverage } from "../agent/coverage.ts";
 import { runAgentLoop } from "../agent/loop.ts";
@@ -222,7 +223,11 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
     modelName: resolved.modelName,
     env: clientEnv,
   });
-  const state = new ToolState(4); // 4 reads per round
+  // Budget values are tier-dependent: strong providers (frontier APIs) get
+  // higher budgets so they can produce richer specs; weak providers (Ollama)
+  // keep tight budgets to avoid runaway loops on slower hardware.
+  const { readBudget, exploreBudget, stepsPerRound } = getBudgets(resolved.tier);
+  const state = new ToolState(readBudget, exploreBudget);
   // Each run lands under specs/.runs/<provider>--<model-slug>/ so concurrent
   // models can produce side-by-side specs without collision.
   const runSlug = modelSlug(resolved.provider.prefix, resolved.modelName);
@@ -274,7 +279,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
     tools,
     state,
     maxRounds: opts.maxIterations,
-    stepsPerRound: 6,
+    stepsPerRound,
     onStepFinish: ({ round, stepNumber, toolCalls }) => {
       process.stderr.write(
         `  [round ${round}] step ${stepNumber + 1}: ${toolCalls} tool call(s)\n`,

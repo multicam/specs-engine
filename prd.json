@@ -1,0 +1,51 @@
+{
+  "title": "Model-dependent agent loop budgets",
+  "description": "Make agent loop budgets (readBudget, exploreBudget, stepsPerRound) model-dependent. Strong models get higher budgets; weak/local models keep the current tight values. Tier is resolved at agent startup from the provider config and passed into the loop.",
+  "stories": [
+    {
+      "id": "budget-tiers",
+      "title": "Model-tier budget constants",
+      "description": "Define a ModelTier type ('strong' | 'weak') and a getBudgets(tier) function that returns {readBudget, exploreBudget, stepsPerRound}. Weak returns current hard-coded values (4, 3, 6). Strong returns higher values (8, 6, 12).",
+      "acceptance_criteria": [
+        "A ModelTier type is exported from a new or existing agent module",
+        "getBudgets('weak') returns { readBudget: 4, exploreBudget: 3, stepsPerRound: 6 }",
+        "getBudgets('strong') returns { readBudget: 8, exploreBudget: 6, stepsPerRound: 12 }",
+        "Unit tests cover both tiers"
+      ],
+      "passes": true,
+      "scenario_file": "specs/budget-tiers.md",
+      "verified_by": "verifier"
+    },
+    {
+      "id": "provider-tier",
+      "title": "Tier field on ProviderConfig",
+      "description": "Add an optional defaultTier field to ProviderConfig. openrouter defaults to 'strong'; ollama defaults to 'weak'. The router exposes the tier via ResolvedProvider.",
+      "acceptance_criteria": [
+        "ProviderConfig has an optional defaultTier: ModelTier field",
+        "PROVIDERS.openrouter has defaultTier: 'strong'",
+        "PROVIDERS.ollama has defaultTier: 'weak'",
+        "ResolvedProvider exposes a tier: ModelTier field set from the provider's defaultTier (defaulting to 'weak' when absent)",
+        "Existing provider tests are updated or extended to cover the new field"
+      ],
+      "passes": true,
+      "scenario_file": "specs/provider-tier.md",
+      "verified_by": "verifier"
+    },
+    {
+      "id": "wire-budgets",
+      "title": "Wire tier-derived budgets into the agent command",
+      "description": "In runAgent (commands/agent.ts), resolve the tier from the provider, call getBudgets(tier), and use the returned values for ToolState construction, stepsPerRound, and the maxRounds fallback comment. Remove the current hard-coded literals.",
+      "acceptance_criteria": [
+        "runAgent reads tier from the resolved provider",
+        "ToolState is constructed with readBudget and exploreBudget from getBudgets(tier)",
+        "stepsPerRound passed to runAgentLoop comes from getBudgets(tier)",
+        "A strong-tier model receives higher budget values than a weak-tier model",
+        "No budget literals (4, 3, 6) remain hard-coded in commands/agent.ts",
+        "Existing agent-loop tests still pass"
+      ],
+      "passes": true,
+      "scenario_file": "specs/wire-budgets.md",
+      "verified_by": "verifier"
+    }
+  ]
+}
