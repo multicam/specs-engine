@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile, access } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { loadConfig, type Config } from "../config.ts";
 import { createFrontier } from "../crawler/frontier.ts";
@@ -9,6 +9,7 @@ import { createJinaClient, type JinaResult } from "../crawler/jina.ts";
 import { extractLinks } from "../crawler/link-extract.ts";
 import { urlToFilepath, hashBody, buildFrontmatter } from "../git/snapshot.ts";
 import { commitIfDirty } from "../git/scrape-repo.ts";
+import { fileExists } from "../fs-util.ts";
 
 export interface ScrapeOptions {
   cwd: string;
@@ -31,15 +32,6 @@ interface MetaEntry {
 }
 
 type Meta = Record<string, MetaEntry>;
-
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * `specs scrape` orchestrator.

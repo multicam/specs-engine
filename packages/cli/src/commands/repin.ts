@@ -1,19 +1,10 @@
 import { resolve, basename } from "node:path";
-import { access } from "node:fs/promises";
 import { loadConfig } from "../config.ts";
 import { repin } from "../git/submodule.ts";
+import { fileExists } from "../fs-util.ts";
 
 export interface RepinOptions {
   cwd: string;
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

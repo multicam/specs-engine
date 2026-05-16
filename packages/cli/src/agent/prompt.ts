@@ -6,8 +6,9 @@
  * defensive fallback. Strips YAML frontmatter before returning the body as the
  * system prompt.
  */
-import { readFile, access } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileExists } from "../fs-util.ts";
 
 /**
  * Extract the first slash-delimited segment from a model ID. Used by callers
@@ -31,15 +32,6 @@ export function stripFrontmatter(text: string): string {
   const match = text.match(/^---\n[\s\S]*?\n---\n/);
   if (match) return text.slice(match[0].length).trimStart();
   return text.trimStart();
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export interface PromptResolutionOptions {

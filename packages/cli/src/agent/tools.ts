@@ -73,10 +73,6 @@ export class ToolState {
     this.exploreBudget = exploreBudget;
   }
 
-  get explorationExhausted(): boolean {
-    return this.readCount >= this.readBudget && this.exploreCount >= this.exploreBudget;
-  }
-
   reset() {
     this.readCount = 0;
     this.exploreCount = 0;

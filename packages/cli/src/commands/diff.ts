@@ -1,21 +1,12 @@
 import { resolve, basename } from "node:path";
-import { access } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { loadConfig } from "../config.ts";
 import { getPinnedSha } from "../git/submodule.ts";
+import { fileExists } from "../fs-util.ts";
 
 export interface DiffOptions {
   cwd: string;
   stat: boolean;
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

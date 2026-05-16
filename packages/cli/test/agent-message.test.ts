@@ -78,8 +78,14 @@ describe("buildInitialMessage", () => {
   });
 
   test("enforces read budget in instructions", async () => {
-    const msg = await buildInitialMessage(tmp, mount, "specs");
+    const msg = await buildInitialMessage(tmp, mount, "specs", 4);
     expect(msg).toContain("at most 4 pages");
+  });
+
+  test("strong-tier read budget reflected in instructions", async () => {
+    const msg = await buildInitialMessage(tmp, mount, "specs", 8);
+    expect(msg).toContain("at most 8 pages");
+    expect(msg).not.toContain("at most 4 pages");
   });
 
   test("includes ALL_TOPICS_COVERED signal instruction", async () => {

@@ -1,6 +1,7 @@
-import { mkdir, writeFile, access } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileExists } from "../fs-util.ts";
 
 export interface InitOptions {
   /** Target slug, e.g. `linear`. */
@@ -19,15 +20,6 @@ export interface InitResult {
   scrapeDir: string;
   configPath: string;
   gitmodulesPath: string;
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function git(cwd: string, args: string[]): void {
@@ -129,10 +121,10 @@ export async function runInit(opts: InitOptions): Promise<InitResult> {
   const projectDir = join(cwd, `${opts.target}-project`);
   const scrapeDir = join(cwd, `${opts.target}-scrape`);
 
-  if (await exists(projectDir)) {
+  if (await fileExists(projectDir)) {
     throw new Error(`init: ${projectDir} already exists`);
   }
-  if (await exists(scrapeDir)) {
+  if (await fileExists(scrapeDir)) {
     throw new Error(`init: ${scrapeDir} already exists`);
   }
 

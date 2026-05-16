@@ -71,4 +71,11 @@ describe("commands/agent.ts source does not hard-code budget literals", () => {
     ).text();
     expect(source).not.toMatch(/stepsPerRound:\s*6\b/);
   });
+
+  test("agent.ts does not hard-code 'at most 4' in prompt text", async () => {
+    const source = await Bun.file(
+      new URL("../src/commands/agent.ts", import.meta.url).pathname,
+    ).text();
+    expect(source).not.toContain("at most 4");
+  });
 });

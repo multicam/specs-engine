@@ -1,25 +1,16 @@
 import { resolve, join } from "node:path";
-import { access } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { loadConfig } from "../config.ts";
 import { sortGlossary } from "../debrand/glossary.ts";
 import { substituteTree } from "../debrand/substitute.ts";
 import { polishFiles, type PolishOptions } from "../debrand/polish.ts";
+import { fileExists } from "../fs-util.ts";
 
 export interface DebrandOptions {
   cwd: string;
   polish: boolean;
   /** Test seam: stub LLM polish call. */
   polishCall?: PolishOptions["call"];
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function gitOk(cwd: string, args: string[]): { stdout: string; status: number } {

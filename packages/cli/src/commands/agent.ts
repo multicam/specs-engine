@@ -8,7 +8,6 @@
  *   specs agent docs-reverse --model deepseek/deepseek-chat --max-iterations 5
  */
 import { resolve, join } from "node:path";
-import { access, readdir } from "node:fs/promises";
 import { loadConfig } from "../config.ts";
 import { resolvePrompt } from "../agent/prompt.ts";
 import { createAgentModel } from "../agent/client.ts";
@@ -19,6 +18,7 @@ import { computeCoverage } from "../agent/coverage.ts";
 import { runAgentLoop } from "../agent/loop.ts";
 import { probeToolCalling } from "../agent/probe.ts";
 import { modelSlug } from "../agent/slug.ts";
+import { fileExists } from "../fs-util.ts";
 import { Glob } from "bun";
 
 export interface AgentOptions {
@@ -33,19 +33,6 @@ export interface AgentOptions {
   promptOverride?: string;
 }
 
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Build the initial user message with project pointers (paths, counts, structure).
- * No file content — the model uses its tools to read.
- */
 /**
  * Derive the submodule mount path inside the project.
  * Config has `scrape_repo: ../brand-scrape` (sibling); the submodule is mounted
@@ -74,6 +61,8 @@ export async function buildInitialMessage(
    * coverage is scored relative to this directory, NOT the canonical specs/.
    */
   specsDirRel: string,
+  /** Max read_file calls per round, derived from the model tier. */
+  readBudget: number = 4,
 ): Promise<string> {
   const scrapeDir = join(cwd, mount);
   const specsDir = join(cwd, specsDirRel);
@@ -133,7 +122,7 @@ export async function buildInitialMessage(
     );
   }
   lines.push(
-    `2. Read at most 4 pages with read_file("${mount}/..."). Do NOT read more than 4.`,
+    `2. Read at most ${readBudget} pages with read_file("${mount}/..."). Do NOT read more than ${readBudget}.`,
   );
   lines.push(
     `3. Write exactly ONE spec file with write_file("${specsDirRel}/<area>/<topic>.md").`,
@@ -275,7 +264,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   const result = await runAgentLoop({
     model,
     systemPrompt: resolvedPrompt.body,
-    buildMessage: () => buildInitialMessage(cwd, mount, runDir),
+    buildMessage: () => buildInitialMessage(cwd, mount, runDir, readBudget),
     tools,
     state,
     maxRounds: opts.maxIterations,
