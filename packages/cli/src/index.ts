@@ -17,7 +17,9 @@ import { runAgent } from "./commands/agent.ts";
 const HELP = `specs — competitive docs scraper
 
 Usage:
-  specs init <target> <start-url>   Scaffold project + sibling scrape repo + submodule
+  specs init [-C <dir>] <target> <start-url>
+                                    Scaffold project + sibling scrape repo + submodule
+                                    (-C overrides parent dir; default is cwd, refuses inside a git repo)
   specs scrape                       Crawl via patterns, fetch via Jina, commit if dirty
   specs status                       Pinned SHA, current HEAD, changed pages since pin
   specs diff [--stat]                Page-level diff since pinned SHA
@@ -52,12 +54,19 @@ async function main(argv: string[]): Promise<number> {
 
   switch (cmd) {
     case "init": {
-      const [target, startUrl] = rest;
+      const parentIdx = rest.indexOf("-C");
+      const parent = parentIdx >= 0 ? rest[parentIdx + 1] : undefined;
+      const positional = rest.filter(
+        (_, i) => i !== parentIdx && i !== parentIdx + 1,
+      );
+      const [target, startUrl] = positional;
       if (!target || !startUrl) {
-        process.stderr.write("init: usage: specs init <target> <start-url>\n");
+        process.stderr.write(
+          "init: usage: specs init [-C <parent-dir>] <target> <start-url>\n",
+        );
         return 2;
       }
-      const r = await runInit({ target, startUrl });
+      const r = await runInit({ target, startUrl, cwd: parent });
       process.stdout.write(
         `initialized:\n  project: ${r.projectDir}\n  scrape:  ${r.scrapeDir}\n  config:  ${r.configPath}\n`,
       );

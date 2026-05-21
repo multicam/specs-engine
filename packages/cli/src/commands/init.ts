@@ -11,6 +11,11 @@ export interface InitOptions {
   /**
    * Parent dir under which we create `<target>-project/` and `<target>-scrape/`
    * as siblings. Defaults to the current process cwd.
+   *
+   * When omitted, init refuses to scaffold inside an existing git work tree
+   * (the sibling layout breaks if `<target>-project/` lands nested in another
+   * repo). Passing this explicitly — either via tests or the `-C` CLI flag —
+   * acknowledges the location and skips the guard.
    */
   cwd?: string;
 }
@@ -108,7 +113,26 @@ debrand:
  * repo Just Works.
  */
 export async function runInit(opts: InitOptions): Promise<InitResult> {
+  const explicitCwd = opts.cwd !== undefined;
   const cwd = resolve(opts.cwd ?? process.cwd());
+
+  // Guard: scaffolding inside an existing git work tree produces a confusing
+  // nested layout (the sibling assumption breaks). Refuse unless the caller
+  // explicitly opted in via `cwd` / `-C`.
+  if (!explicitCwd) {
+    const probe = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd,
+      encoding: "utf8",
+    });
+    if (probe.status === 0) {
+      const repoRoot = probe.stdout.trim();
+      throw new Error(
+        `init: refusing to scaffold inside existing git repo '${repoRoot}'.\n` +
+          `       cd to its parent directory, or pass -C <dir> to override.`,
+      );
+    }
+  }
+
   if (!/^[a-z0-9][a-z0-9-]*$/i.test(opts.target)) {
     throw new Error(
       `init: invalid target slug '${opts.target}'. Use [a-zA-Z0-9-], starting with alphanumeric.`,

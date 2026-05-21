@@ -48,3 +48,35 @@ describe("runInit", () => {
     }
   });
 });
+
+describe("runInit guard", () => {
+  test("refuses to scaffold inside an existing git repo when cwd is implicit", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "init-guard-"));
+    spawnSync("git", ["init", "-q", "-b", "main"], { cwd: repo });
+    const origCwd = process.cwd();
+    try {
+      process.chdir(repo);
+      await expect(
+        runInit({ target: "acme2", startUrl: "https://example.com/" }),
+      ).rejects.toThrow(/refusing to scaffold inside existing git repo/);
+    } finally {
+      process.chdir(origCwd);
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("explicit cwd bypasses the guard (tests + -C flag path)", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "init-bypass-"));
+    spawnSync("git", ["init", "-q", "-b", "main"], { cwd: repo });
+    try {
+      const r = await runInit({
+        target: "acme3",
+        startUrl: "https://example.com/",
+        cwd: repo,
+      });
+      expect(r.projectDir).toBe(join(repo, "acme3-project"));
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+});
