@@ -1,5 +1,5 @@
-import { resolve, basename } from "node:path";
-import { loadConfig } from "../config.ts";
+import { resolve } from "node:path";
+import { loadConfig, resolveScrapeMount } from "../config.ts";
 import { repin } from "../git/submodule.ts";
 import { fileExists } from "../fs-util.ts";
 
@@ -23,7 +23,7 @@ export async function runRepin(opts: RepinOptions): Promise<number> {
   }
   const config = await loadConfig(configPath);
   const scrapeRoot = resolve(cwd, config.scrape_repo);
-  const submodulePath = basename(scrapeRoot);
+  const submodulePath = resolveScrapeMount(config);
 
   const result = repin(cwd, submodulePath, scrapeRoot);
   if (result.changed) {

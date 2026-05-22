@@ -33,6 +33,17 @@ const BudgetOverrideSchema = z
 export const ConfigSchema = z.object({
   target: z.string().min(1, "target is required"),
   scrape_repo: z.string().min(1, "scrape_repo is required"),
+  /**
+   * Submodule mount point *inside* the project repo where `scrape_repo` is
+   * pulled in. Default `scrape` — a role-named directory so the project tree
+   * reads as `dub-project/scrape/`, not `dub-project/dub-scrape/` (the latter
+   * looked like duplication of the sibling).
+   *
+   * Pre-2026-05-22 projects scaffolded without this field; the resolver falls
+   * back to the basename of `scrape_repo` (e.g. `dub-scrape`) so existing
+   * layouts keep working until they're migrated.
+   */
+  scrape_mount: z.string().min(1).optional(),
 
   crawl: z.object({
     start: z
@@ -117,6 +128,22 @@ export const ConfigSchema = z.object({
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type BudgetOverride = z.infer<typeof BudgetOverrideSchema>;
+
+/**
+ * Resolve the submodule mount path inside the project repo.
+ *
+ * Prefer `config.scrape_mount` (post-2026-05-22 scaffolds use `scrape`).
+ * Legacy fallback: basename of `config.scrape_repo` — old projects scaffolded
+ * `scrape_repo: ../<target>-scrape` and mounted as `<target>-scrape/`.
+ *
+ * Used by every command that touches the submodule (agent, status, repin,
+ * diff, scrape) so the resolution rule lives in exactly one place.
+ */
+export function resolveScrapeMount(config: Config): string {
+  const explicit = config.scrape_mount?.trim();
+  if (explicit) return explicit;
+  return config.scrape_repo.replace(/^\.\.\//, "").replace(/\/$/, "");
+}
 
 export class ConfigError extends Error {
   override readonly name = "ConfigError";

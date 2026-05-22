@@ -8,7 +8,7 @@
  *   specs agent docs-reverse --model deepseek/deepseek-chat --max-iterations 5
  */
 import { resolve, join } from "node:path";
-import { loadConfig } from "../config.ts";
+import { loadConfig, resolveScrapeMount } from "../config.ts";
 import { resolvePrompt } from "../agent/prompt.ts";
 import { createAgentModel } from "../agent/client.ts";
 import { resolveLLM } from "../agent/resolve.ts";
@@ -43,15 +43,6 @@ export interface AgentOptions {
   promptOverride?: string;
 }
 
-/**
- * Derive the submodule mount path inside the project.
- * Config has `scrape_repo: ../brand-scrape` (sibling); the submodule is mounted
- * as `brand-scrape/` inside the project dir. The basename of the relative path
- * is the mount point.
- */
-function submoduleMountName(scrapeRepo: string): string {
-  return scrapeRepo.replace(/^\.\.\//, "").replace(/\/$/, "");
-}
 
 export async function scanDir(dir: string, pattern = "**/*.md"): Promise<string[]> {
   const files: string[] = [];
@@ -235,7 +226,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   const runDir = `specs/.runs/${runSlug}`;
   const tools = createTools(cwd, state, runDir);
 
-  const mount = submoduleMountName(config.scrape_repo);
+  const mount = resolveScrapeMount(config);
 
   process.stderr.write(
     `agent: writing to ${runDir}/\n`,

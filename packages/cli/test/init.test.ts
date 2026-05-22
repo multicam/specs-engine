@@ -29,6 +29,12 @@ describe("runInit", () => {
 
     const gitmodules = await readFile(res.gitmodulesPath, "utf8");
     expect(gitmodules).toContain("url = ../acme-scrape");
+    // Submodule mount is role-named `scrape/`, not `<target>-scrape/`.
+    expect(gitmodules).toContain("path = scrape");
+    expect((await stat(join(res.projectDir, "scrape"))).isDirectory()).toBe(true);
+
+    const yaml = await readFile(res.configPath, "utf8");
+    expect(yaml).toContain("scrape_mount: scrape");
   });
 
   test("writes .gitignore with default entries in both repos", async () => {

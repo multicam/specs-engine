@@ -38,6 +38,7 @@ async function freshProject(): Promise<Setup> {
     r.configPath,
     `target: acme
 scrape_repo: ../acme-scrape
+scrape_mount: scrape
 crawl:
   start: [https://example.com/]
   follow: ["https://example.com/**"]
@@ -89,7 +90,7 @@ function scrape(version = "v1"): Promise<number> {
 
 describe("submodule helpers", () => {
   test("getPinnedSha returns the SHA recorded at the submodule path", () => {
-    const sha = getPinnedSha(s.projectDir, "acme-scrape");
+    const sha = getPinnedSha(s.projectDir, "scrape");
     // After init, the scrape repo has one commit; the project pins it.
     const scrapeHead = getScrapeHeadSha(s.scrapeDir);
     expect(sha).toBe(scrapeHead);

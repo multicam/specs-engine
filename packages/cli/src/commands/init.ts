@@ -77,6 +77,9 @@ export function defaultConfigYaml(target: string, startUrl: string): string {
   const human = target.charAt(0).toUpperCase() + target.slice(1);
   return `target: ${target}
 scrape_repo: ../${target}-scrape
+# Submodule mount inside this project. Role-named so the tree reads as
+# <target>-project/scrape/ instead of <target>-project/<target>-scrape/.
+scrape_mount: scrape
 
 crawl:
   start:
@@ -203,7 +206,7 @@ export async function runInit(opts: InitOptions): Promise<InitResult> {
     "add",
     "-q",
     `../${opts.target}-scrape`,
-    `${opts.target}-scrape`,
+    "scrape",
   ]);
 
   const gitmodulesPath = join(projectDir, ".gitmodules");

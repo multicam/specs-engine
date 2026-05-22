@@ -1,6 +1,6 @@
-import { resolve, basename } from "node:path";
+import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { loadConfig } from "../config.ts";
+import { loadConfig, resolveScrapeMount } from "../config.ts";
 import { getPinnedSha } from "../git/submodule.ts";
 import { fileExists } from "../fs-util.ts";
 
@@ -25,7 +25,7 @@ export async function runDiff(opts: DiffOptions): Promise<number> {
   }
   const config = await loadConfig(configPath);
   const scrapeRoot = resolve(cwd, config.scrape_repo);
-  const submodulePath = basename(scrapeRoot);
+  const submodulePath = resolveScrapeMount(config);
   const pinned = getPinnedSha(cwd, submodulePath);
 
   const args = pinned
