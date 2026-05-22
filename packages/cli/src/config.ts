@@ -8,7 +8,28 @@ import { readFile } from "node:fs/promises";
  * Defaults mirror the defaults written by `specs init`: missing optional
  * sections evaluate to safe values so callers can `config.crawl.max_depth`
  * without per-field guarding.
+ *
+ * The `llm` section is the **single source of truth for LLM routing**:
+ *   - `llm.defaults.<task>` selects the default model for a task (agent,
+ *     polish). `--model` on the CLI overrides per-call.
+ *   - `llm.budgets.<tier>` overrides the built-in tier budgets from
+ *     `agent/budgets.ts`. Partial overrides are merged with the defaults.
+ *   - `llm.polish.max_tokens` controls the debrand-polish completion size.
+ *   - `llm.agent.max_iterations` is the default for `specs agent`'s outer
+ *     loop when `--max-iterations` is not passed.
+ *
+ * The historical `agent.openrouter_api_key_env` knob is retained for
+ * back-compat — when set, the agent resolves the OpenRouter key from that
+ * env var instead of `OPENROUTER_API_KEY`. New configs should drop it.
  */
+const BudgetOverrideSchema = z
+  .object({
+    readBudget: z.number().int().positive().optional(),
+    exploreBudget: z.number().int().positive().optional(),
+    stepsPerRound: z.number().int().positive().optional(),
+  })
+  .strict();
+
 export const ConfigSchema = z.object({
   target: z.string().min(1, "target is required"),
   scrape_repo: z.string().min(1, "scrape_repo is required"),
@@ -46,12 +67,56 @@ export const ConfigSchema = z.object({
   agent: z
     .object({
       ralph_pack: z.string().min(1, "agent.ralph_pack is required").optional(),
+      /** @deprecated use `llm.providers.openrouter.api_key_env` (not yet implemented) or just `OPENROUTER_API_KEY`. */
       openrouter_api_key_env: z.string().default("OPENROUTER_API_KEY"),
     })
     .optional(),
+
+  llm: z
+    .object({
+      defaults: z
+        .object({
+          /** Default model for `specs agent` when `--model` is not passed. */
+          agent: z.string().min(1).optional(),
+          /** Default model for `specs debrand --polish`. Anthropic models recommended. */
+          polish: z.string().min(1).optional(),
+        })
+        .default({}),
+      budgets: z
+        .object({
+          strong: BudgetOverrideSchema.optional(),
+          weak: BudgetOverrideSchema.optional(),
+        })
+        .default({}),
+      polish: z
+        .object({
+          /** Max completion tokens for the polish pass. */
+          max_tokens: z.number().int().positive().default(8000),
+          /**
+           * Max in-flight polish calls. 6 is the empirical sweet spot for
+           * z.ai/Anthropic-style providers; bump up on subscription-billed
+           * providers, drop to 1 if you hit rate limits.
+           */
+          concurrency: z.number().int().positive().default(6),
+        })
+        .default({ max_tokens: 8000, concurrency: 6 }),
+      agent: z
+        .object({
+          /** Default `--max-iterations` for `specs agent`. */
+          max_iterations: z.number().int().positive().default(5),
+        })
+        .default({ max_iterations: 5 }),
+    })
+    .default({
+      defaults: {},
+      budgets: {},
+      polish: { max_tokens: 8000, concurrency: 6 },
+      agent: { max_iterations: 5 },
+    }),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
+export type BudgetOverride = z.infer<typeof BudgetOverrideSchema>;
 
 export class ConfigError extends Error {
   override readonly name = "ConfigError";

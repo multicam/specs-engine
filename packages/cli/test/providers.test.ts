@@ -23,6 +23,35 @@ describe("PROVIDERS.openrouter", () => {
   });
 });
 
+describe("PROVIDERS.zai", () => {
+  test("exists with prefix 'zai' and ZAI_API_KEY env name", () => {
+    const p = PROVIDERS["zai"];
+    expect(p).toBeDefined();
+    expect(p!.prefix).toBe("zai");
+    expect(p!.apiKeyEnvName).toBe("ZAI_API_KEY");
+  });
+
+  test("promptDirs walks zai/ then glm-5/ then anthropic/", () => {
+    expect(PROVIDERS["zai"]!.promptDirs).toEqual(["zai", "glm-5", "anthropic"]);
+  });
+
+  test("baseURL is the z.ai coding-paas v4 endpoint", () => {
+    expect(PROVIDERS["zai"]!.baseURL({})).toBe(
+      "https://api.z.ai/api/coding/paas/v4",
+    );
+  });
+
+  test("apiKey reads ZAI_API_KEY from env, null when absent", () => {
+    const p = PROVIDERS["zai"]!;
+    expect(p.apiKey({ ZAI_API_KEY: "sk-test" })).toBe("sk-test");
+    expect(p.apiKey({})).toBeNull();
+  });
+
+  test("knownGoodModels includes the GLM-5.1 flagship", () => {
+    expect(PROVIDERS["zai"]!.knownGoodModels).toContain("glm-5.1");
+  });
+});
+
 describe("PROVIDERS.ollama", () => {
   test("exists with prefix 'ollama' and no apiKey requirement", () => {
     const p = PROVIDERS["ollama"];

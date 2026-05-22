@@ -154,14 +154,27 @@ A pre-flight tool-call probe runs before the main loop. Models that don't drive 
 
 Curated `knownGoodModels` for Ollama: `qwen2.5-coder:7b`, `qwen2.5-coder:32b`, `llama3.1:8b`, `mistral-nemo:12b`, `qwen2.5:7b`, `qwen2.5:32b`. Outside this list the agent prints a flakiness warning but still runs the probe.
 
+### Path D — z.ai (GLM, coding-plan subscription)
+
+```bash
+cd ~/Code/acme-project
+specs agent docs-reverse --model zai/glm-5.1 --max-iterations 5
+specs agent docs-reverse --model zai/glm-4.6
+```
+
+Uses `ralph-loop-pack/.ralph/prompts/zai/docs-reverse.md` if present, falling back to `glm-5/docs-reverse.md`, then `anthropic/docs-reverse.md`. Requires `ZAI_API_KEY` in env. Targets z.ai's coding-paas endpoint (`https://api.z.ai/api/coding/paas/v4`) — billed by coding-plan subscription, not per token. Use the general PaaS endpoint instead if your key isn't a coding-plan key.
+
+Curated models for z.ai: `glm-5.1` (flagship), `glm-4.7`, `glm-4.6`, `glm-4.5-air`. All support OpenAI-style tool calls. Outside this list the agent prints a flakiness warning but still runs the probe.
+
 ### Model recommendations
 
 | Task | Model | Path |
 |------|-------|------|
 | docs-reverse (reasoning-heavy) | `openrouter/deepseek/deepseek-r1-0528` | Path B |
+| docs-reverse (z.ai coding plan) | `zai/glm-5.1` | Path D |
 | docs-reverse (local, free) | `ollama/qwen2.5-coder:7b` or `ollama/qwen2.5:32b` | Path C |
 | review | `openrouter/deepseek/deepseek-r1-0528` | Path B |
-| build (code gen) | `openrouter/deepseek/deepseek-v3-2` | Path B |
+| build (code gen) | `openrouter/deepseek/deepseek-v3-2` or `zai/glm-5.1` | Path B / D |
 | docs-reverse (Anthropic) | Claude (via CC default) | Path A |
 
 Note: `deepseek/deepseek-chat` and `deepseek/deepseek-reasoner` are obsolete OpenRouter model IDs. Use `deepseek-r1-0528` (reasoning) and `deepseek-v3-2` (code gen) instead.

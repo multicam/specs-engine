@@ -25,19 +25,24 @@ Usage:
   specs diff [--stat]                Page-level diff since pinned SHA
   specs repin                        Bump submodule to scrape HEAD; commit in project
   specs debrand [--polish]           Apply glossary to specs/, optional LLM polish
-  specs agent <mode> [options]       Run LLM agent (OpenRouter or Ollama) with tool access
+  specs agent <mode> [options]       Run LLM agent (OpenRouter, Ollama, or z.ai) with tool access
 
 Agent options:
-  --model <id>              Provider-prefixed model ID (required)
+  --model <id>              Provider-prefixed model ID (optional — falls back
+                            to llm.defaults.agent from .specs-engine.yaml)
                               openrouter/<vendor>/<model>     — needs OPENROUTER_API_KEY
                               ollama/<model>:<tag>            — local; OLLAMA_HOST optional
+                              zai/<model>                     — z.ai GLM models; needs ZAI_API_KEY
+                              anthropic/<model>               — needs ANTHROPIC_API_KEY
                               <vendor>/<model>                — legacy; routes to openrouter
-  --max-iterations <n>      Max agent steps (default: 5)
+  --max-iterations <n>      Max agent rounds (default: llm.agent.max_iterations
+                            from config, or 5)
   --prompt <path>           Override prompt file (optional)
 
 Examples:
   specs agent docs-reverse --model openrouter/deepseek/deepseek-r1-0528
   specs agent docs-reverse --model ollama/qwen2.5-coder:7b
+  specs agent docs-reverse --model zai/glm-5.1
   OLLAMA_HOST=http://gpu.lan:11434 specs agent docs-reverse --model ollama/qwen2.5:32b
 
 Run inside a <target>-project/ directory (containing .specs-engine.yaml),
@@ -86,28 +91,24 @@ async function main(argv: string[]): Promise<number> {
       const mode = rest[0];
       if (!mode || mode.startsWith("--")) {
         process.stderr.write(
-          "agent: usage: specs agent <mode> --model <model-id> [--max-iterations <n>] [--prompt <path>]\n",
+          "agent: usage: specs agent <mode> [--model <model-id>] [--max-iterations <n>] [--prompt <path>]\n",
         );
         return 2;
       }
       const modelIdx = rest.indexOf("--model");
       const model = modelIdx >= 0 ? rest[modelIdx + 1] : undefined;
-      if (!model) {
-        process.stderr.write("agent: --model is required\n");
-        return 2;
-      }
       const maxIterIdx = rest.indexOf("--max-iterations");
       const maxIterations =
-        maxIterIdx >= 0 ? parseInt(rest[maxIterIdx + 1] ?? "5", 10) : 5;
+        maxIterIdx >= 0 ? parseInt(rest[maxIterIdx + 1] ?? "0", 10) : undefined;
       const promptIdx = rest.indexOf("--prompt");
       const promptOverride =
         promptIdx >= 0 ? rest[promptIdx + 1] : undefined;
       return runAgent({
         cwd: process.cwd(),
         mode,
-        model,
-        maxIterations,
-        promptOverride,
+        ...(model ? { model } : {}),
+        ...(maxIterations ? { maxIterations } : {}),
+        ...(promptOverride ? { promptOverride } : {}),
       });
     }
     default:

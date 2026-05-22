@@ -11,10 +11,14 @@ import { resolve, join } from "node:path";
 import { loadConfig } from "../config.ts";
 import { resolvePrompt } from "../agent/prompt.ts";
 import { createAgentModel } from "../agent/client.ts";
-import { resolveProvider } from "../agent/router.ts";
+import { resolveLLM } from "../agent/resolve.ts";
 import { getBudgets } from "../agent/budgets.ts";
 import { createTools, ToolState } from "../agent/tools.ts";
-import { computeCoverage } from "../agent/coverage.ts";
+import {
+  computeCoverage,
+  extractCitedSources,
+  type SpecRef,
+} from "../agent/coverage.ts";
 import { runAgentLoop } from "../agent/loop.ts";
 import { probeToolCalling } from "../agent/probe.ts";
 import { modelSlug } from "../agent/slug.ts";
@@ -25,10 +29,16 @@ export interface AgentOptions {
   cwd: string;
   /** Mode name, e.g. "docs-reverse". */
   mode: string;
-  /** OpenRouter model ID, e.g. "deepseek/deepseek-chat". */
-  model: string;
-  /** Max agent iterations. Default 5. */
-  maxIterations: number;
+  /**
+   * Provider-prefixed model id, e.g. `openrouter/anthropic/claude-sonnet-4-5`.
+   * Optional — falls back to `llm.defaults.agent` from `.specs-engine.yaml`.
+   */
+  model?: string;
+  /**
+   * Max agent iterations. Optional — falls back to `llm.agent.max_iterations`
+   * from config (default 5).
+   */
+  maxIterations?: number;
   /** Optional explicit prompt file path. */
   promptOverride?: string;
 }
@@ -68,7 +78,17 @@ export async function buildInitialMessage(
   const specsDir = join(cwd, specsDirRel);
 
   const scrapedFiles = await scanDir(scrapeDir);
-  const existingSpecs = await scanDir(specsDir);
+  const existingSpecPaths = await scanDir(specsDir);
+
+  // Read each spec body so we can parse its `## Source pages` block. This
+  // catches the dedup leak where the agent invents variant filenames for the
+  // same source pages.
+  const existingSpecs: SpecRef[] = await Promise.all(
+    existingSpecPaths.map(async (p) => {
+      const body = await Bun.file(join(specsDir, p)).text().catch(() => "");
+      return { path: p, citedSources: extractCitedSources(body) };
+    }),
+  );
   const coverage = computeCoverage(scrapedFiles, existingSpecs);
 
   const lines: string[] = [];
@@ -100,7 +120,7 @@ export async function buildInitialMessage(
   // Existing specs list (compact)
   if (existingSpecs.length > 0) {
     lines.push(`\n### Already written`);
-    lines.push(existingSpecs.map((f) => `${specsDirRel}/${f}`).join(", "));
+    lines.push(existingSpecs.map((s) => `${specsDirRel}/${s.path}`).join(", "));
   }
 
   // Instructions with priority + completion rules
@@ -160,29 +180,25 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
     return 1;
   }
 
-  // Resolve provider via the router
-  const resolved = resolveProvider(opts.model);
-
-  // Resolve API key, honoring deprecated `agent.openrouter_api_key_env` config
-  // override when the openrouter provider is selected (back-compat).
-  const legacyOverride =
-    resolved.provider.prefix === "openrouter"
-      ? config.agent?.openrouter_api_key_env
-      : undefined;
-  const apiKey = legacyOverride
-    ? (process.env[legacyOverride] ?? null)
-    : resolved.provider.apiKey(process.env);
-  if (resolved.provider.apiKeyEnvName && !apiKey) {
-    const envName = legacyOverride ?? resolved.provider.apiKeyEnvName;
-    process.stderr.write(
-      `agent: ${envName} environment variable is not set ` +
-        `(required for provider '${resolved.provider.prefix}').\n`,
-    );
-    return 1;
+  // Resolve model + provider + api-key in one shot (CLI flag > config default).
+  const llm = resolveLLM({
+    config,
+    task: "agent",
+    ...(opts.model ? { modelOverride: opts.model } : {}),
+  });
+  if (!llm.ok) {
+    process.stderr.write(`agent: ${llm.error}`);
+    return llm.exitCode;
   }
+  const { resolved } = llm;
+  const effectiveModelId = resolved.modelId;
+  const maxIterations =
+    opts.maxIterations ?? config.llm.agent.max_iterations;
 
   // Resolve prompt
-  process.stderr.write(`agent: resolving prompt for mode '${opts.mode}' (model: ${opts.model})\n`);
+  process.stderr.write(
+    `agent: resolving prompt for mode '${opts.mode}' (model: ${effectiveModelId})\n`,
+  );
   let resolvedPrompt;
   try {
     resolvedPrompt = await resolvePrompt({
@@ -190,9 +206,9 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
         ? ralphPackPath.replace(/^~/, process.env.HOME ?? "~")
         : "",
       mode: opts.mode,
-      modelId: opts.model,
+      modelId: effectiveModelId,
       promptDirs: resolved.provider.promptDirs,
-      promptOverride: opts.promptOverride,
+      ...(opts.promptOverride ? { promptOverride: opts.promptOverride } : {}),
     });
   } catch (err) {
     process.stderr.write(`agent: ${(err as Error).message}\n`);
@@ -201,21 +217,17 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   process.stderr.write(`agent: using prompt from ${resolvedPrompt.path}\n`);
 
   // Create model + tools with shared state for read budget + write tracking.
-  // When the legacy override is set, hand the resolved key off via env so the
-  // provider's apiKey fn can pick it up uniformly.
-  const clientEnv =
-    legacyOverride && apiKey
-      ? { ...process.env, [resolved.provider.apiKeyEnvName!]: apiKey }
-      : process.env;
   const model = createAgentModel({
     provider: resolved.provider,
     modelName: resolved.modelName,
-    env: clientEnv,
+    env: llm.env,
   });
-  // Budget values are tier-dependent: strong providers (frontier APIs) get
-  // higher budgets so they can produce richer specs; weak providers (Ollama)
-  // keep tight budgets to avoid runaway loops on slower hardware.
-  const { readBudget, exploreBudget, stepsPerRound } = getBudgets(resolved.tier);
+  // Budget values are tier-dependent (strong: frontier APIs, weak: Ollama).
+  // `llm.budgets.<tier>` in .specs-engine.yaml may override per-field.
+  const { readBudget, exploreBudget, stepsPerRound } = getBudgets(
+    resolved.tier,
+    config.llm.budgets,
+  );
   const state = new ToolState(readBudget, exploreBudget);
   // Each run lands under specs/.runs/<provider>--<model-slug>/ so concurrent
   // models can produce side-by-side specs without collision.
@@ -246,7 +258,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   const probe = await probeToolCalling({
     model,
     tools,
-    modelId: opts.model,
+    modelId: effectiveModelId,
     ...(resolved.provider.knownGoodModels
       ? { knownGoodModels: resolved.provider.knownGoodModels }
       : {}),
@@ -258,7 +270,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   process.stderr.write(`agent: probe ok (${probe.toolCallCount} tool call(s))\n`);
 
   process.stderr.write(
-    `agent: starting loop (model: ${opts.model}, max rounds: ${opts.maxIterations})\n`,
+    `agent: starting loop (model: ${effectiveModelId}, max rounds: ${maxIterations})\n`,
   );
 
   const result = await runAgentLoop({
@@ -267,7 +279,7 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
     buildMessage: () => buildInitialMessage(cwd, mount, runDir, readBudget),
     tools,
     state,
-    maxRounds: opts.maxIterations,
+    maxRounds: maxIterations,
     stepsPerRound,
     onStepFinish: ({ round, stepNumber, toolCalls }) => {
       process.stderr.write(

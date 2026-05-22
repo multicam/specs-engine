@@ -86,3 +86,73 @@ crawl:
     expect(() => parseConfig("target: : :\n  bad")).toThrow(ConfigError);
   });
 });
+
+describe("parseConfig — llm section", () => {
+  test("llm section defaults to safe values when omitted", () => {
+    const cfg = parseConfig(VALID);
+    expect(cfg.llm).toBeDefined();
+    expect(cfg.llm.defaults).toEqual({});
+    expect(cfg.llm.budgets).toEqual({});
+    expect(cfg.llm.polish.max_tokens).toBe(8000);
+    expect(cfg.llm.agent.max_iterations).toBe(5);
+  });
+
+  test("accepts llm.defaults for both tasks", () => {
+    const yaml =
+      VALID +
+      `
+llm:
+  defaults:
+    agent: openrouter/anthropic/claude-sonnet-4-5
+    polish: anthropic/claude-sonnet-4-5
+`;
+    const cfg = parseConfig(yaml);
+    expect(cfg.llm.defaults.agent).toBe(
+      "openrouter/anthropic/claude-sonnet-4-5",
+    );
+    expect(cfg.llm.defaults.polish).toBe("anthropic/claude-sonnet-4-5");
+  });
+
+  test("accepts partial llm.budgets overrides per tier", () => {
+    const yaml =
+      VALID +
+      `
+llm:
+  budgets:
+    strong:
+      readBudget: 16
+    weak:
+      stepsPerRound: 4
+`;
+    const cfg = parseConfig(yaml);
+    expect(cfg.llm.budgets.strong?.readBudget).toBe(16);
+    expect(cfg.llm.budgets.weak?.stepsPerRound).toBe(4);
+  });
+
+  test("overrides llm.polish.max_tokens and llm.agent.max_iterations", () => {
+    const yaml =
+      VALID +
+      `
+llm:
+  polish:
+    max_tokens: 4000
+  agent:
+    max_iterations: 12
+`;
+    const cfg = parseConfig(yaml);
+    expect(cfg.llm.polish.max_tokens).toBe(4000);
+    expect(cfg.llm.agent.max_iterations).toBe(12);
+  });
+
+  test("rejects unknown fields inside llm.budgets.<tier>", () => {
+    const yaml =
+      VALID +
+      `
+llm:
+  budgets:
+    strong:
+      bogus: 1
+`;
+    expect(() => parseConfig(yaml)).toThrow(ConfigError);
+  });
+});

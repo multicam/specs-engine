@@ -22,6 +22,8 @@ cd ~/Code/acme-project
 specs scrape                                  # crawl + Jina fetch → commits into acme-scrape/
 specs repin                                   # pin scrape SHA as baseline
 specs agent docs-reverse --model openrouter/deepseek/deepseek-r1-0528
+# or z.ai coding plan:
+specs agent docs-reverse --model zai/glm-5.1
 specs debrand --polish                        # glossary substitution + LLM cleanup
 ```
 
@@ -39,7 +41,7 @@ Then hand `specs/` to `ralph` (or your code-gen loop of choice) to generate `src
 | `specs agent <mode> --model <id>` | Run LLM agent (OpenRouter or Ollama) with tool access |
 | `specs debrand [--polish]` | Glossary substitution across `specs/`, optional LLM polish |
 
-Agent model IDs: `openrouter/<vendor>/<model>` or `ollama/<model>:<tag>`. See `docs/workflow.md` for model recommendations and the full incremental-update flow.
+Agent model IDs: `openrouter/<vendor>/<model>`, `ollama/<model>:<tag>`, or `zai/<model>` (needs `ZAI_API_KEY`). See `docs/workflow.md` for model recommendations and the full incremental-update flow.
 
 ## Docs
 

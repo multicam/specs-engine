@@ -100,6 +100,24 @@ debrand:
   glossary:
     ${human}: Projectify
   polish: false
+
+agent:
+  ralph_pack: ~/Code/ralph-loop-pack
+
+# LLM routing — single source of truth for which model each task uses.
+# Per-call --model on the CLI overrides these defaults.
+llm:
+  defaults:
+    agent: openrouter/anthropic/claude-sonnet-4-5
+    polish: anthropic/claude-sonnet-4-5
+  agent:
+    max_iterations: 5
+  polish:
+    max_tokens: 8000
+    concurrency: 6        # parallel polish calls (1 = serial; bump on subscription billing)
+  # budgets:        # optional per-tier overrides; defaults live in agent/budgets.ts
+  #   strong: { readBudget: 8, exploreBudget: 6, stepsPerRound: 12 }
+  #   weak:   { readBudget: 4, exploreBudget: 3, stepsPerRound: 6 }
 `;
 }
 

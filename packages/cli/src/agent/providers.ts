@@ -55,6 +55,22 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     createModel: (modelName, env) =>
       createAnthropic({ apiKey: env["ANTHROPIC_API_KEY"] ?? "" })(modelName),
   },
+  zai: {
+    prefix: "zai",
+    baseURL: () => "https://api.z.ai/api/coding/paas/v4",
+    apiKey: (env) => env["ZAI_API_KEY"] ?? null,
+    apiKeyEnvName: "ZAI_API_KEY",
+    promptDirs: ["zai", "glm-5", "anthropic"],
+    // Cosmetic: shown in the probe-failure diagnostic. GLM-5.1, 4.7, 4.6 all
+    // document tool-call support; 4.5-air is a cheaper variant worth surfacing.
+    knownGoodModels: [
+      "glm-5.1",
+      "glm-4.7",
+      "glm-4.6",
+      "glm-4.5-air",
+    ],
+    defaultTier: "strong",
+  },
   ollama: {
     prefix: "ollama",
     baseURL: (env) => {

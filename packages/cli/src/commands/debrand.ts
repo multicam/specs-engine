@@ -53,9 +53,21 @@ export async function runDebrand(opts: DebrandOptions): Promise<number> {
     skipped: [],
   };
   if (opts.polish) {
+    const polishFilesList =
+      subResult.changed.length > 0 ? subResult.changed : await listSpecsMd(specsDir);
+    const concurrency = config.llm.polish.concurrency;
+    process.stderr.write(`debrand: polishing ${polishFilesList.length} file(s) (concurrency=${concurrency})...\n`);
+    const startedAt = Date.now();
     polishResult = await polishFiles({
-      files: subResult.changed.length > 0 ? subResult.changed : await listSpecsMd(specsDir),
+      files: polishFilesList,
+      config,
+      concurrency,
       ...(opts.polishCall ? { call: opts.polishCall } : {}),
+      onProgress: ({ index, total, file, changed, error }) => {
+        const elapsed = ((Date.now() - startedAt) / 1000).toFixed(0);
+        const tag = error ? `ERR ${error.message.slice(0, 60)}` : changed ? "ok" : "no-op";
+        process.stderr.write(`  [${index}/${total} ${elapsed}s] ${tag} ${file.split("/").slice(-2).join("/")}\n`);
+      },
     });
     if (polishResult.reason) {
       process.stderr.write(`debrand: polish skipped (${polishResult.reason})\n`);

@@ -17,6 +17,10 @@ describe("ProviderConfig.defaultTier", () => {
   test("ollama has defaultTier 'weak'", () => {
     expect(PROVIDERS["ollama"]!.defaultTier).toBe("weak");
   });
+
+  test("zai has defaultTier 'strong'", () => {
+    expect(PROVIDERS["zai"]!.defaultTier).toBe("strong");
+  });
 });
 
 describe("ResolvedProvider.tier", () => {
@@ -43,6 +47,13 @@ describe("ResolvedProvider.tier", () => {
   test("resolving ollama yields tier 'weak'", () => {
     const r = resolveProvider("ollama/qwen2.5-coder:7b");
     expect(r.tier).toBe("weak");
+  });
+
+  test("resolving zai yields tier 'strong'", () => {
+    const r = resolveProvider("zai/glm-5.1");
+    expect(r.tier).toBe("strong");
+    expect(r.modelName).toBe("glm-5.1");
+    expect(r.provider.prefix).toBe("zai");
   });
 
   test("legacy bare route (unknown prefix) falls through to openrouter, tier 'strong'", () => {

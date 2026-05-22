@@ -32,3 +32,31 @@ describe("getBudgets", () => {
     expect(b).toHaveProperty("stepsPerRound");
   });
 });
+
+describe("getBudgets — config overrides", () => {
+  test("override fields win over defaults; missing fields fall through", () => {
+    const b = getBudgets("strong", {
+      strong: { readBudget: 20 },
+    });
+    expect(b.readBudget).toBe(20);
+    expect(b.exploreBudget).toBe(6); // default
+    expect(b.stepsPerRound).toBe(12); // default
+  });
+
+  test("override targets the requested tier only", () => {
+    const overrides = { strong: { readBudget: 99 } };
+    expect(getBudgets("weak", overrides).readBudget).toBe(4); // untouched
+    expect(getBudgets("strong", overrides).readBudget).toBe(99);
+  });
+
+  test("empty overrides object is equivalent to no override", () => {
+    expect(getBudgets("strong", {})).toEqual(getBudgets("strong"));
+  });
+
+  test("can override all three fields at once", () => {
+    const b = getBudgets("weak", {
+      weak: { readBudget: 1, exploreBudget: 1, stepsPerRound: 1 },
+    });
+    expect(b).toEqual({ readBudget: 1, exploreBudget: 1, stepsPerRound: 1 });
+  });
+});
