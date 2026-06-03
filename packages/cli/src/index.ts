@@ -49,6 +49,30 @@ Run inside a <target>-project/ directory (containing .specs-engine.yaml),
 except for 'init' which creates one.
 `;
 
+/**
+ * Parse `init` positional args, tolerating an optional `-C <dir>` flag anywhere
+ * in the list. Pure + exported so the dispatcher contract is unit-testable
+ * without spawning a process.
+ *
+ * Note the `-C` indices are only excised when the flag is actually present —
+ * `indexOf` returns -1 when absent, and `-1 + 1 === 0` would otherwise drop the
+ * first positional (the target).
+ */
+export function parseInitArgs(rest: string[]): {
+  target?: string;
+  startUrl?: string;
+  parent?: string;
+} {
+  const parentIdx = rest.indexOf("-C");
+  const parent = parentIdx >= 0 ? rest[parentIdx + 1] : undefined;
+  const positional =
+    parentIdx >= 0
+      ? rest.filter((_, i) => i !== parentIdx && i !== parentIdx + 1)
+      : rest;
+  const [target, startUrl] = positional;
+  return { target, startUrl, parent };
+}
+
 async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
 
@@ -59,12 +83,7 @@ async function main(argv: string[]): Promise<number> {
 
   switch (cmd) {
     case "init": {
-      const parentIdx = rest.indexOf("-C");
-      const parent = parentIdx >= 0 ? rest[parentIdx + 1] : undefined;
-      const positional = rest.filter(
-        (_, i) => i !== parentIdx && i !== parentIdx + 1,
-      );
-      const [target, startUrl] = positional;
+      const { target, startUrl, parent } = parseInitArgs(rest);
       if (!target || !startUrl) {
         process.stderr.write(
           "init: usage: specs init [-C <parent-dir>] <target> <start-url>\n",
@@ -117,9 +136,14 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-main(process.argv.slice(2))
-  .then((code) => process.exit(code))
-  .catch((err: Error) => {
-    process.stderr.write(`error: ${err.message}\n`);
-    process.exit(1);
-  });
+// Only run as a CLI when invoked directly (`bun src/index.ts ...`). When the
+// module is imported (e.g. by tests for parseInitArgs), import.meta.main is
+// false and we skip the auto-run.
+if (import.meta.main) {
+  main(process.argv.slice(2))
+    .then((code) => process.exit(code))
+    .catch((err: Error) => {
+      process.stderr.write(`error: ${err.message}\n`);
+      process.exit(1);
+    });
+}
