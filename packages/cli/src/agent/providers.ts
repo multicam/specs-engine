@@ -7,6 +7,7 @@
  */
 import type { LanguageModel } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { resolveApiKey } from "@zai-tools/zai";
 import type { ModelTier } from "./budgets.ts";
 
 export interface ProviderConfig {
@@ -58,7 +59,12 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
   zai: {
     prefix: "zai",
     baseURL: () => "https://api.z.ai/api/coding/paas/v4",
-    apiKey: (env) => env["ZAI_API_KEY"] ?? null,
+    // Resolves the z.ai key via @zai-tools/zai's D4 chain
+    // (ZAI_API_KEY → ZAI_CODING_CN_API_KEY → ZHIPU_API_KEY). `skipDotenv: true`
+    // omits the `~/.claude/.env` fallback: that is a qara convention, not
+    // specs-engine's, and keeping it out makes resolution host-independent and
+    // `apiKey({})` deterministically null. See specs/phase7-specs-engine.md (D-7-1).
+    apiKey: (env) => resolveApiKey({ env, skipDotenv: true }),
     apiKeyEnvName: "ZAI_API_KEY",
     promptDirs: ["zai", "glm-5", "anthropic"],
     // Cosmetic: shown in the probe-failure diagnostic. GLM-5.1, 4.7, 4.6 all

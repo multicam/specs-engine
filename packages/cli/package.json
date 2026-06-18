@@ -16,6 +16,7 @@
     "@ai-sdk/anthropic": "^3.0.74",
     "@ai-sdk/openai": "^3.0.53",
     "@anthropic-ai/sdk": "^0.40.0",
+    "@zai-tools/zai": "file:../../../zai-tools/packages/ts",
     "ai": "^6.0.162",
     "js-yaml": "^4.1.0",
     "micromatch": "^4.0.8",

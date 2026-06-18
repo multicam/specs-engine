@@ -44,7 +44,34 @@ describe("PROVIDERS.zai", () => {
   test("apiKey reads ZAI_API_KEY from env, null when absent", () => {
     const p = PROVIDERS["zai"]!;
     expect(p.apiKey({ ZAI_API_KEY: "sk-test" })).toBe("sk-test");
+    // S-7-4: host-independent null. skipDotenv keeps this true even on a host
+    // with a real ~/.claude/.env (regression guard for D-7-1).
     expect(p.apiKey({})).toBeNull();
+  });
+
+  test("apiKey resolves the D4 fallback chain (ZAI_CODING_CN_API_KEY, ZHIPU_API_KEY)", () => {
+    const p = PROVIDERS["zai"]!;
+    // S-7-2: each fallback var resolves when ZAI_API_KEY is absent.
+    expect(p.apiKey({ ZAI_CODING_CN_API_KEY: "sk-b" })).toBe("sk-b");
+    expect(p.apiKey({ ZHIPU_API_KEY: "sk-c" })).toBe("sk-c");
+  });
+
+  test("apiKey precedence is ZAI_API_KEY first (D4 order)", () => {
+    const p = PROVIDERS["zai"]!;
+    // S-7-3: primary var wins over the fallbacks when all are set.
+    expect(
+      p.apiKey({
+        ZAI_API_KEY: "sk-primary",
+        ZAI_CODING_CN_API_KEY: "sk-b",
+        ZHIPU_API_KEY: "sk-c",
+      }),
+    ).toBe("sk-primary");
+  });
+
+  test("apiKey trims surrounding whitespace", () => {
+    const p = PROVIDERS["zai"]!;
+    // S-7-5: resolveApiKey trims the resolved value.
+    expect(p.apiKey({ ZAI_API_KEY: "  sk-d  " })).toBe("sk-d");
   });
 
   test("knownGoodModels includes the GLM-5.1 flagship", () => {
