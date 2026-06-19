@@ -7,7 +7,8 @@
  */
 import type { LanguageModel } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { resolveApiKey } from "@zai-tools/zai";
+import { resolveApiKey, ZaiClient } from "@zai-tools/zai";
+import { createZaiLanguageModel } from "@zai-tools/zai/ai-sdk";
 import type { ModelTier } from "./budgets.ts";
 
 export interface ProviderConfig {
@@ -76,6 +77,18 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
       "glm-4.5-air",
     ],
     defaultTier: "strong",
+    // V6 (D-V6-1): drive z.ai through the V4 adapter so each call captures the
+    // value layer — retry-classify (incl. z.ai business codes), the concurrency
+    // gate, per-request JWT minting, and tool-calling — instead of the generic
+    // createOpenAI(...).chat() path. Key resolution stays single-path + host-
+    // independent: thread `key: { env, skipDotenv: true }` so ZaiClient resolves
+    // via the SAME D4 chain + skipDotenv (D-7-1). A pre-resolved `apiKey:` would
+    // be a trap — on null, ZaiClient re-resolves WITH dotenv, leaking ~/.claude/.env.
+    createModel: (modelName, env) =>
+      createZaiLanguageModel({
+        model: modelName,
+        client: new ZaiClient({ key: { env, skipDotenv: true } }),
+      }),
   },
   ollama: {
     prefix: "ollama",
