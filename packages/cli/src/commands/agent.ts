@@ -148,6 +148,57 @@ export async function buildInitialMessage(
   return lines.join("\n");
 }
 
+/**
+ * Build the per-round message for `intake` mode: read the already-written
+ * claim-based specs under `specsDirRel` (excluding `specs/.runs/` — the
+ * per-run output area), then write EXACTLY ONE `BUSINESS_INTENT.md` at
+ * `outFileRel`. Unlike `buildInitialMessage`, this is not a coverage loop —
+ * there is no "uncovered page" framing and no `ALL_TOPICS_COVERED` signal;
+ * completion is structural (the BI file exists), enforced by the caller via
+ * `AgentLoopOptions.isRoundComplete`.
+ */
+export async function buildIntakeMessage(
+  cwd: string,
+  specsDirRel: string,
+  outFileRel: string,
+  readBudget: number = 4,
+): Promise<string> {
+  const specsDir = join(cwd, specsDirRel);
+  const inputSpecs = await scanDir(specsDir);
+
+  const lines: string[] = [];
+
+  lines.push(`## Input specs (${inputSpecs.length})`);
+  if (inputSpecs.length === 0) {
+    lines.push(
+      `No input specs found under ${specsDirRel}/. Do NOT invent content — ` +
+        `state plainly in the output that no source material was available.`,
+    );
+  } else {
+    lines.push("```");
+    for (const p of inputSpecs) lines.push(`${specsDirRel}/${p}`);
+    lines.push("```");
+  }
+
+  lines.push("\n## Your task");
+  lines.push(
+    `1. Read the input specs listed above with read_file("${specsDirRel}/..."). ` +
+      `You have a read budget of at most ${readBudget} — use it wisely.`,
+  );
+  lines.push(
+    `2. Synthesize their claims into a single business-intent draft.`,
+  );
+  lines.push(
+    `3. Write EXACTLY ONE file with write_file("${outFileRel}", <content>). ` +
+      `Do not write any other file.`,
+  );
+  lines.push(
+    `4. You MUST call write_file with the BUSINESS_INTENT.md content before finishing.`,
+  );
+
+  return lines.join("\n");
+}
+
 export async function runAgent(opts: AgentOptions): Promise<number> {
   const cwd = resolve(opts.cwd);
   const configPath = join(cwd, ".specs-engine.yaml");
@@ -226,7 +277,27 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   const runDir = `specs/.runs/${runSlug}`;
   const tools = createTools(cwd, state, runDir);
 
-  const mount = resolveScrapeMount(config);
+  const isIntake = opts.mode === "intake";
+  // docs-reverse needs a resolved scrape mount; intake reads only already-written
+  // specs and has no scrape source, so skip resolving/requiring one.
+  const mount = isIntake ? "" : resolveScrapeMount(config);
+  const outFileRel = `${runDir}/BUSINESS_INTENT.md`;
+  const buildMessage = isIntake
+    ? () => buildIntakeMessage(cwd, "specs", outFileRel, readBudget)
+    : () => buildInitialMessage(cwd, mount, runDir, readBudget);
+  const isRoundComplete = isIntake
+    ? (s: ToolState) => s.specsWritten.some((p) => p.endsWith("BUSINESS_INTENT.md"))
+    : undefined;
+  // Intake-flavored continuation/retry nudges so the loop's docs-reverse
+  // coverage framing ("pick one uncovered page", ALL_TOPICS_COVERED) never
+  // leaks into an intake round if the model stalls. Undefined for docs-reverse
+  // → the loop's defaults apply (behavior byte-identical).
+  const continuationHint = isIntake
+    ? `\n\n**ACTION REQUIRED: call write_file for BUSINESS_INTENT.md NOW. Do not end this round without writing it.**`
+    : undefined;
+  const retryHint = isIntake
+    ? `Read at MOST 1 input spec with read_file, then you MUST call write_file for BUSINESS_INTENT.md immediately.`
+    : undefined;
 
   process.stderr.write(
     `agent: writing to ${runDir}/\n`,
@@ -267,11 +338,14 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
   const result = await runAgentLoop({
     model,
     systemPrompt: resolvedPrompt.body,
-    buildMessage: () => buildInitialMessage(cwd, mount, runDir, readBudget),
+    buildMessage,
     tools,
     state,
     maxRounds: maxIterations,
     stepsPerRound,
+    ...(isRoundComplete ? { isRoundComplete } : {}),
+    ...(continuationHint ? { continuationHint } : {}),
+    ...(retryHint ? { retryHint } : {}),
     onStepFinish: ({ round, stepNumber, toolCalls }) => {
       process.stderr.write(
         `  [round ${round}] step ${stepNumber + 1}: ${toolCalls} tool call(s)\n`,
@@ -279,7 +353,9 @@ export async function runAgent(opts: AgentOptions): Promise<number> {
     },
     onRoundFinish: ({ round, steps, wroteSpec, done }) => {
       const status = done
-        ? "ALL TOPICS COVERED"
+        ? isIntake
+          ? "intake BI written"
+          : "ALL TOPICS COVERED"
         : wroteSpec
           ? "spec written"
           : "no spec written (stall)";

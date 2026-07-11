@@ -188,4 +188,85 @@ describe("runAgentLoop (outer loop)", () => {
     expect(rounds.length).toBe(1);
     expect(rounds[0]!.done).toBe(true);
   });
+
+  test("isRoundComplete: stops one-shot when the BI is written, no DONE_SIGNAL needed", async () => {
+    const state = new ToolState(10);
+    const model = sequenceModel([
+      { toolCalls: [tc("write_file", { path: "specs/.runs/x/BUSINESS_INTENT.md", content: "# BI" }, "w1")] },
+      { text: "Wrote the business intent draft." },
+    ]);
+
+    const result = await runAgentLoop(loopOpts({
+      model,
+      state,
+      tools: { write_file: makeWriteTool(state) },
+      maxRounds: 5,
+      isRoundComplete: (s) => s.specsWritten.some((p) => p.endsWith("BUSINESS_INTENT.md")),
+    }));
+
+    expect(result.rounds).toBe(1);
+    expect(result.allTopicsCovered).toBe(true);
+    expect(result.specsWritten).toEqual(["specs/.runs/x/BUSINESS_INTENT.md"]);
+  });
+
+  test("regression: without isRoundComplete, ALL_TOPICS_COVERED text signal still governs completion", async () => {
+    const model = sequenceModel([
+      { toolCalls: [tc("write_file", { path: "specs/a.md", content: "# A" }, "w1")] },
+      { text: "Wrote A." },
+      { toolCalls: [tc("write_file", { path: "specs/b.md", content: "# B" }, "w2")] },
+      { text: "ALL_TOPICS_COVERED" },
+    ]);
+
+    const result = await runAgentLoop(loopOpts({ model, maxRounds: 10 }));
+
+    expect(result.rounds).toBe(2);
+    expect(result.specsWritten).toEqual(["specs/a.md", "specs/b.md"]);
+    expect(result.allTopicsCovered).toBe(true);
+  });
+
+  test("intake hints replace docs-reverse coverage framing on the stall/retry path", async () => {
+    // Round 0 stalls (no write) → round 1 is a retry, which is exactly where the
+    // docs-reverse "pick one uncovered page / SIMPLE topic / ALL_TOPICS_COVERED"
+    // text used to leak in unconditionally. With intake hints, that framing must
+    // be gone and the retry must point at BUSINESS_INTENT.md instead.
+    const prompts: string[] = [];
+    const state = new ToolState(10);
+    let call = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        prompts.push(JSON.stringify(options.prompt));
+        call++;
+        // call 1 = round 0 (stall, no write); call 2 = round 1 step 1 (write the
+        // BI once); call 3 = round 1 step 2 (stop). isRoundComplete then breaks.
+        if (call === 2) {
+          return mockResult({
+            toolCalls: [
+              tc("write_file", { path: "specs/.runs/x/BUSINESS_INTENT.md", content: "# BI" }, "w1"),
+            ],
+          });
+        }
+        return mockResult({ text: "still thinking" });
+      },
+    });
+
+    const result = await runAgentLoop(loopOpts({
+      model,
+      state,
+      tools: { write_file: makeWriteTool(state) },
+      maxRounds: 5,
+      isRoundComplete: (s) => s.specsWritten.some((p) => p.endsWith("BUSINESS_INTENT.md")),
+      continuationHint:
+        "\n\n**ACTION REQUIRED: call write_file for BUSINESS_INTENT.md NOW. Do not end this round without writing it.**",
+      retryHint:
+        "Read at MOST 1 input spec with read_file, then you MUST call write_file for BUSINESS_INTENT.md immediately.",
+    }));
+
+    // Round 1 (the retry) is prompts[1]. It must carry the intake framing, not docs-reverse's.
+    expect(prompts.length).toBeGreaterThanOrEqual(2);
+    expect(prompts[1]).not.toContain("uncovered page");
+    expect(prompts[1]).not.toContain("SIMPLE topic");
+    expect(prompts[1]).not.toContain("ALL_TOPICS_COVERED");
+    expect(prompts[1]).toContain("BUSINESS_INTENT.md");
+    expect(result.specsWritten).toEqual(["specs/.runs/x/BUSINESS_INTENT.md"]);
+  });
 });

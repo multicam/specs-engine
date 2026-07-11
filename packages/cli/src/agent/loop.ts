@@ -26,6 +26,29 @@ export interface AgentLoopOptions {
   state: ToolState;
   maxRounds: number;
   stepsPerRound?: number;
+  /**
+   * Optional structural completion predicate, checked each round after the
+   * write is recorded. When it returns true the loop stops immediately (same
+   * `done` path as the `ALL_TOPICS_COVERED` text signal) — used by intake
+   * mode to stop one-shot once `BUSINESS_INTENT.md` is written, without
+   * requiring the model to emit any text signal. Left undefined, behavior is
+   * byte-identical to today (docs-reverse coverage loop unaffected).
+   */
+  isRoundComplete?: (state: ToolState) => boolean;
+  /**
+   * Nudge appended to a non-retry continuation round (`round > 0`, no prior
+   * stall). Defaults to the docs-reverse coverage-loop text. Intake mode passes
+   * a BI-oriented nudge so the docs-reverse "pick one uncovered page" framing
+   * never leaks into an intake round (its whole design is no coverage framing).
+   */
+  continuationHint?: string;
+  /**
+   * Tail guidance for a retry round (after a stall). Defaults to the
+   * docs-reverse retry text (which references "uncovered pages" and the
+   * `ALL_TOPICS_COVERED` signal). Intake mode overrides it so a stalled intake
+   * run is told to write `BUSINESS_INTENT.md`, not to pick a coverage topic.
+   */
+  retryHint?: string;
   onStepFinish?: (info: { round: number; stepNumber: number; toolCalls: number }) => void;
   onRoundFinish?: (info: { round: number; steps: number; wroteSpec: boolean; done: boolean }) => void;
 }
@@ -39,10 +62,22 @@ export interface AgentLoopResult {
 
 const DONE_SIGNAL = "ALL_TOPICS_COVERED";
 
+/** Default non-retry continuation nudge (docs-reverse coverage loop). */
+const DEFAULT_CONTINUATION_HINT =
+  `\n\n**ACTION REQUIRED: Pick one uncovered page and call write_file NOW. Do not end this round without writing.**`;
+
+/** Default retry-round tail guidance (docs-reverse coverage loop). */
+const DEFAULT_RETRY_HINT =
+  `Review the uncovered pages above. Pick a SIMPLE topic. ` +
+  `You may read at MOST 1 file with read_file, then you MUST call write_file immediately. ` +
+  `If truly nothing is left, respond: ${DONE_SIGNAL}`;
+
 export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopResult> {
   const {
     model, systemPrompt, buildMessage, tools, state,
-    maxRounds, stepsPerRound = 10, onStepFinish, onRoundFinish,
+    maxRounds, stepsPerRound = 10, isRoundComplete,
+    continuationHint = DEFAULT_CONTINUATION_HINT, retryHint = DEFAULT_RETRY_HINT,
+    onStepFinish, onRoundFinish,
   } = opts;
 
   let totalSteps = 0;
@@ -68,10 +103,10 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
     // buildInitialMessage already has the write mandate but weak models need
     // a reinforcing nudge at the end to actually commit.
     const prompt = isRetry
-      ? buildContinuation(message, state.specsWritten)
+      ? buildContinuation(message, state.specsWritten, retryHint)
       : round === 0
         ? message
-        : message + `\n\n**ACTION REQUIRED: Pick one uncovered page and call write_file NOW. Do not end this round without writing.**`;
+        : message + continuationHint;
 
     // Retry: tight step budget + 1-read budget set above forces quick write.
     const effectiveSteps = isRetry ? Math.min(stepsPerRound, 4) : stepsPerRound;
@@ -94,8 +129,9 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
     totalSteps += result.steps.length;
     roundsCompleted = round + 1;
     const wroteSpec = state.specsWritten.length > specsBeforeRound;
+    const structurallyDone = isRoundComplete?.(state) ?? false;
 
-    if (result.text.includes(DONE_SIGNAL)) {
+    if (result.text.includes(DONE_SIGNAL) || structurallyDone) {
       allTopicsCovered = true;
       onRoundFinish?.({ round: round + 1, steps: result.steps.length, wroteSpec, done: true });
       break;
@@ -119,14 +155,16 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
   };
 }
 
-function buildContinuation(baseMessage: string, specsWritten: string[]): string {
+function buildContinuation(
+  baseMessage: string,
+  specsWritten: string[],
+  retryHint: string = DEFAULT_RETRY_HINT,
+): string {
   const specsList = specsWritten.length > 0 ? specsWritten.join(", ") : "(none this session)";
   return (
     baseMessage +
     `\n\nPREVIOUS ROUND FAILED TO WRITE. This is your retry.\n` +
     `Written this session: ${specsList}\n` +
-    `Review the uncovered pages above. Pick a SIMPLE topic. ` +
-    `You may read at MOST 1 file with read_file, then you MUST call write_file immediately. ` +
-    `If truly nothing is left, respond: ${DONE_SIGNAL}`
+    retryHint
   );
 }
